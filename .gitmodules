@@ -1,0 +1,6 @@
+[submodule "ext/tinykvm"]
+	path = ext/tinykvm
+	url = https://github.com/varnish/tinykvm.git
+[submodule "ext/json"]
+	path = ext/json
+	url = https://github.com/nlohmann/json.git

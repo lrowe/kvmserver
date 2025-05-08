@@ -1,0 +1,53 @@
+{
+	"server_port": 8080,
+	"filename": "$HOME/github/deno/target/release/deno",
+	"concurrency": 4,
+	"main_arguments": [
+		"run",
+		"--allow-all",
+		"$PWD/deno/main.ts"
+	],
+	"environment": [
+		"DENO_V8_FLAGS=--single-threaded,--max-old-space-size=64,--max-semi-space-size=64",
+		"DENO_DIR=/home/gonzo/.cache/deno",
+		"DENO_NO_UPDATE_CHECK=1"
+	],
+	"executable_remapping": {
+		"caged_heap": ["0x1000000000", 64]
+	},
+	"remapping": {
+		"dont_know": ["0xC00000000", 64]
+	},
+	"current_working_directory": "$PWD/program/deno",
+	"allowed_paths": [
+		"/dev/urandom",
+		"/etc/resolv.conf",
+		"/lib/x86_64-linux-gnu/libz.so.1",
+		"/lib/x86_64-linux-gnu/libnss_systemd.so.2",
+		"/lib/x86_64-linux-gnu/libcap.so.2",
+		"/lib/x86_64-linux-gnu/libnss_mdns4_minimal.so.2",
+		"$$HOME/.cache/deno",
+		"$$PWD/program/deno",
+		{
+			"real": "$HOME/.cache/deno/dep_analysis_cache_v2",
+			"writable": true,
+			"prefix": true
+		}, {
+			"real": "$HOME/.cache/deno/v8_code_cache_v2",
+			"writable": true,
+			"prefix": true
+		}, {
+			"real": "$HOME/.cache/deno/node_analysis_cache_v2",
+			"writable": true,
+			"prefix": true
+		}, {
+			"real": "$HOME/.cache/deno/remote",
+			"writable": true,
+			"prefix": true
+		}, {
+			"real": "$HOME/.cache/deno/npm",
+			"writable": true,
+			"prefix": true
+		}
+	]
+}
