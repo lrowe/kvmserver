@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <thread>
 #include "vm.hpp"
 extern std::vector<uint8_t> file_loader(const std::string& filename);
 
@@ -35,8 +36,68 @@ int main(int argc, char* argv[])
 
 		// Create a VirtualMachine instance
 		VirtualMachine vm(binary, config);
+		int listening_fd = -1;
+		vm.machine().fds().set_listening_socket_callback(
+			[&](int vfd, int fd) {
+				listening_fd = fd;
+			});
+		vm.machine().fds().set_epoll_wait_callback(
+		[&](int vfd, int epfd, int timeout) {
+			if (listening_fd != -1) {
+				// If the listening socket is found, we are now waiting for
+				// requests, so we can fork a new VM.
+				vm.set_waiting_for_requests(true);
+				vm.machine().stop();
+				return false; // Don't call epoll_wait
+			}
+			return true; // Call epoll_wait
+		});
 		vm.initialize();
 
+		// Start VM forks
+		std::vector<std::thread> threads;
+		threads.reserve(config.concurrency);
+		printf("Starting up %u threads...\n", config.concurrency);
+
+		for (unsigned int i = 0; i < config.concurrency; ++i)
+		{
+			threads.emplace_back([&vm, i]() {
+				// Fork a new VM
+				VirtualMachine forked_vm(vm);
+				try {
+					while (true) {
+						forked_vm.machine().run();
+						fprintf(stderr, "Forked VM finished, retrying...\n");
+					}
+				} catch (const tinykvm::MachineTimeoutException& me) {
+					fprintf(stderr, "*** Forked VM %u timed out\n", i);
+					fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
+				} catch (const tinykvm::MachineException& me) {
+					fprintf(stderr, "*** Forked VM %u Error: %s Data: 0x%#lX\n",
+						i, me.what(), me.data());
+				} catch (const std::exception& e) {
+					fprintf(stderr, "*** Forked VM %u Error: %s\n", i, e.what());
+					fprintf(stderr, "The server has stopped.\n");
+				}
+			});
+		}
+
+		fprintf(stderr, "Waiting for requests...\n");
+		// Wait for all threads to finish
+		for (auto& thread : threads) {
+			thread.join();
+		}
+
+	} catch (const tinykvm::MachineTimeoutException& me) {
+		fprintf(stderr, "Machine timed out\n");
+		fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
+		fprintf(stderr, "The server has stopped.\n");
+		return 1;
+	} catch (const tinykvm::MachineException& me) {
+		fprintf(stderr, "Machine not initialized properly\n");
+		fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
+		fprintf(stderr, "The server has stopped.\n");
+		return 1;
 	} catch (const std::exception& e) {
 		fprintf(stderr, "Error: %s\n", e.what());
 		fprintf(stderr, "The server has stopped.\n");

@@ -14,6 +14,7 @@ struct VirtualMachine
 
 	void wait_for_requests_paused();
 	bool is_waiting_for_requests() const noexcept { return m_waiting_for_requests; }
+	void set_waiting_for_requests(bool waiting) noexcept { m_waiting_for_requests = waiting; }
 
 	auto& machine() { return m_machine; }
 	const auto& machine() const { return m_machine; }

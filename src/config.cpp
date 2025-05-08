@@ -107,7 +107,7 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 
 		config.max_main_memory = json.value("max_memory", config.max_main_memory);
 		// The address space must at least be as large as the main memory
-		config.max_address_space = json.value("max_address_space", config.max_address_space);
+		config.max_address_space = json.value("address_space", config.max_address_space);
 		config.max_address_space = std::max(config.max_address_space, config.max_main_memory);
 
 		if (json.contains("max_req_mem")) {
@@ -199,8 +199,8 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		}
 
 		// Raise the memory sizes into megabytes
-		config.max_main_memory = config.max_main_memory * (1UL << 20);
-		config.max_address_space = config.max_address_space * (1UL << 20);
+		config.max_address_space = config.max_address_space * (1ULL << 20);
+		config.max_main_memory = config.max_main_memory * (1ULL << 20);
 		config.max_req_mem = config.max_req_mem * (1UL << 20);
 		config.limit_req_mem = config.limit_req_mem * (1UL << 20);
 		config.shared_memory = config.shared_memory * (1UL << 20);

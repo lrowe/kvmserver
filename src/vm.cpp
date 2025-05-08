@@ -42,6 +42,7 @@ VirtualMachine::VirtualMachine(const std::vector<uint8_t>& binary, const Configu
 		config.verbose_syscalls);
 	machine().set_verbose_thread_syscalls(
 		config.verbose_syscalls);
+	machine().fds().set_verbose(config.verbose);
 	// Set the current working directory
 	machine().fds().set_current_working_directory(
 		config.current_working_directory);
@@ -99,7 +100,7 @@ VirtualMachine::VirtualMachine(const std::vector<uint8_t>& binary, const Configu
 }
 VirtualMachine::VirtualMachine(const VirtualMachine& other)
 	: m_machine(other.m_machine, tinykvm::MachineOptions{
-		.max_mem = other.m_machine.max_address(),
+		.max_mem = other.config().max_main_memory,
 		.max_cow_mem = other.config().max_req_mem,
 		.split_hugepages = other.config().split_hugepages,
 		.relocate_fixed_mmap = other.config().relocate_fixed_mmap,
@@ -109,10 +110,40 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other)
 	  m_original_binary(other.m_original_binary),
 	  m_binary_type(other.m_binary_type)
 {
+	machine().set_userdata<VirtualMachine> (this);
+	machine().fds().set_verbose(config().verbose);
+	machine().set_verbose_system_calls(
+		other.config().verbose_syscalls);
+	machine().set_verbose_mmap_syscalls(
+		other.config().verbose_syscalls);
+	machine().set_verbose_thread_syscalls(
+		other.config().verbose_syscalls);
+	// Set the current working directory
+	machine().fds().set_current_working_directory(
+		other.config().current_working_directory);
+	/* Allow open read-only files */
+	for (auto& path : config().allowed_paths) {
+		if (path.writable) {
+			continue;
+		}
+		machine().fds().add_readonly_file(path.virtual_path);
+	}
+	/* Allow duplicating read-only FDs from the source */
+	machine().fds().set_find_readonly_master_vm_fd_callback(
+		[&] (int vfd) -> std::optional<const tinykvm::FileDescriptors::Entry*> {
+			return other.machine().fds().entry_for_vfd(vfd);
+		});
+	machine().fds().set_connect_socket_callback(
+	[&] (int fd, struct sockaddr_storage& addr) -> bool {
+		(void)fd;
+		(void)addr;
+		return true;
+	});
 }
 VirtualMachine::~VirtualMachine()
 {
 	// Destructor
+	printf("VirtualMachine destructor\n");
 }
 
 void VirtualMachine::reset_to(VirtualMachine& other)
@@ -179,27 +210,18 @@ void VirtualMachine::initialize()
 		if (!is_waiting_for_requests()) {
 			throw std::runtime_error("Program did not wait for requests");
 		}
-		printf("Program is waiting for requests\n");
 
-		// We don't know if this is a resumable VM, but if it is we must skip
-		// over the OUT instruction that was executed in the backend call.
-		// We can do this regardless of whether it is a resumable VM or not.
-		// This will also help make faulting VMs return back to the correct
-		// state when they are being reset.
+		// The VM is currently paused in kernel mode in a system call handler
+		// so we need manully return to user mode
 		auto& regs = machine().registers();
-		regs.rip += 2;
+		// Emulate SYSRET to user mode
+		regs.rip = regs.rcx;    // Restore next RIP
+		//regs.rflags = regs.r11; // Restore rflags
+		regs.rax = -4; // EINTR: interrupted system call
 		machine().set_registers(regs);
 
 		// Make forkable (with *NO* working memory)
 		machine().prepare_copy_on_write(0UL);
-
-		// Set new vmcall stack base lower than current RSP, in
-		// order to avoid trampling stack-allocated things in main.
-		auto rsp = machine().registers().rsp;
-		if (rsp >= stack && rsp < stack_end) {
-			rsp = (rsp - 128UL) & ~0xFLL; // Avoid red-zone if main is leaf
-			machine().set_stack_address(rsp);
-		}
 	}
 	catch (const tinykvm::MachineException& me)
 	{
