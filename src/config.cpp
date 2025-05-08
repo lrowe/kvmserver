@@ -23,6 +23,54 @@ static std::string apply_dollar_vars(std::string str)
 	return str;
 }
 
+template <typename T>
+void add_remappings(const nlohmann::json& json, std::vector<T>& remappings,
+	bool allow_read, bool allow_write, bool allow_execute)
+{
+	for (const auto& remap : json) {
+		tinykvm::VirtualRemapping remapping;
+		// Physical is usually 0x0, which means allocate from guest heap
+		remapping.phys = 0x0;
+		if (remap.is_array()) {
+			// Remapping is an array of "0xADDRESS" and size pairs
+			// Eg. ["0x100000000": 64] indicating a 64mb remapping
+			std::string address = remap.at(0).get<std::string>();
+			if (address.find("0x") != std::string::npos) {
+				remapping.virt = std::stoull(address, nullptr, 16);
+			} else {
+				remapping.virt = std::stoull(address);
+			}
+			// The size is the second element in the array
+			remapping.size = remap.at(1).get<uint64_t>() * (1UL << 20); // Convert MB to bytes
+			// Set the permissions
+			remapping.writable = allow_write;
+			remapping.executable = allow_execute;
+			remappings.push_back(remapping);
+		}
+		else if (remap.is_object())
+		{
+			// Remapping is an object with "virtual", "size", "executable", "writable" etc.
+			// There are always virtual and size fields
+			remapping.virt = remap.at("virtual").get<uint64_t>();
+			remapping.size = remap.at("size").get<uint64_t>() * (1UL << 20); // Convert MB to bytes
+			if (remap.contains("physical")) {
+				// This should be *very* rare
+				remapping.phys = remap["physical"].get<uint64_t>();
+			}
+			// In this case we get the permissions explicitly from the JSON
+			remapping.executable = remap.value("executable", false);
+			remapping.writable = remap.value("writable", false);
+			remappings.push_back(remapping);
+		}
+		else {
+			// Print the whole object for debugging
+			fprintf(stderr, "Invalid remapping format in configuration:\n");
+			fprintf(stderr, "%s\n", remap.dump(4).c_str());
+			throw std::runtime_error("Invalid remapping format in configuration file");
+		}
+	}
+}
+
 Configuration Configuration::FromJsonFile(const std::string& filename)
 {
 	Configuration config;
@@ -57,7 +105,7 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		config.max_boot_time = json.value("max_boot_time", config.max_boot_time);
 		config.max_req_time = json.value("max_req_time", config.max_req_time);
 
-		config.max_main_memory = json.value("max_main_memory", config.max_main_memory);
+		config.max_main_memory = json.value("max_memory", config.max_main_memory);
 		// The address space must at least be as large as the main memory
 		config.max_address_space = json.value("max_address_space", config.max_address_space);
 		config.max_address_space = std::max(config.max_address_space, config.max_main_memory);
@@ -86,8 +134,8 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		config.verbose_syscalls = json.value("verbose_syscalls", config.verbose_syscalls);
 		config.verbose_pagetable = json.value("verbose_pagetable", config.verbose_pagetable);
 
-		if (json.contains("environ")) {
-			for (const auto& env : json["environ"]) {
+		if (json.contains("environment")) {
+			for (const auto& env : json["environment"]) {
 				std::string env_str = env.get<std::string>();
 				env_str = apply_dollar_vars(env_str);
 				config.environ.push_back(std::move(env_str));
@@ -103,43 +151,12 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		}
 
 		if (json.contains("remappings")) {
-			for (const auto& remap : json["remappings"]) {
-				tinykvm::VirtualRemapping remapping;
-				// Physical is usually 0x0, which means allocate from guest heap
-				remapping.phys = 0x0;
-				if (remap.is_array()) {
-					// Remapping is an array of "0xADDRESS" and size pairs
-					// Eg. ["0x100000000": 64] indicating a 64mb remapping
-					std::string address = remap.at(0).get<std::string>();
-					if (address.find("0x") != std::string::npos) {
-						remapping.virt = std::stoull(address, nullptr, 16);
-					} else {
-						remapping.virt = std::stoull(address);
-					}
-					// The size is the second element in the array
-					remapping.size = remap.at(1).get<uint64_t>() * (1UL << 20); // Convert MB to bytes
-					config.vmem_remappings.push_back(remapping);
-				}
-				else if (remap.is_object())
-				{
-					// Remapping is an object with "virtual", "size", "executable", "writable" etc.
-					// There are always virtual and size fields
-					remapping.virt = remap.at("virtual").get<uint64_t>();
-					remapping.size = remap.at("size").get<uint64_t>() * (1UL << 20); // Convert MB to bytes
-					if (remap.contains("physical")) {
-						// This should be *very* rare
-						remapping.phys = remap["physical"].get<uint64_t>();
-					}
-					remapping.executable = remap.value("executable", false);
-					remapping.writable = remap.value("writable", false);
-				}
-				else {
-					// Print the whole object for debugging
-					fprintf(stderr, "Invalid remapping format in configuration file: %s\n", filename.c_str());
-					fprintf(stderr, "%s\n", remap.dump(4).c_str());
-					throw std::runtime_error("Invalid remapping format in configuration file: " + filename);
-				}
-			}
+			add_remappings(json["remappings"], config.vmem_remappings,
+				true, true, false); // +R, +W, -X
+		}
+		if (json.contains("executable_remappings")) {
+			add_remappings(json["executable_remappings"], config.vmem_remappings,
+				true, true, true); // +R, +W, +X
 		}
 
 		if (json.contains("allowed_paths")) {
@@ -149,10 +166,8 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 					// If the path is a string, it is a real path
 					vpath.real_path = path.get<std::string>();
 					vpath.real_path = apply_dollar_vars(vpath.real_path);
-					if (vpath.real_path.at(0) == '$') {
-						// This is a prefix path
-					}
 					vpath.virtual_path = vpath.real_path;
+					config.allowed_paths.push_back(vpath);
 					continue;
 				}
 				if (!path.contains("real")) {
@@ -165,6 +180,15 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 				}
 				vpath.real_path = path["real"].get<std::string>();
 				vpath.real_path = apply_dollar_vars(vpath.real_path);
+				if (path.contains("virtual")) {
+					vpath.virtual_path = path["virtual"].get<std::string>();
+					// Record the index of the virtual path in the allowed paths
+					// that contains a specific virtual path.
+					config.rewrite_path_indices.insert_or_assign(
+						vpath.virtual_path, config.allowed_paths.size());
+				} else {
+					vpath.virtual_path = vpath.real_path;
+				}
 				vpath.virtual_path = path.value("virtual_path", vpath.real_path);
 				vpath.writable = path.value("writable", false);
 				vpath.symlink = path.value("symlink", false);
@@ -174,6 +198,17 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 			}
 		}
 
+		// Raise the memory sizes into megabytes
+		config.max_main_memory = config.max_main_memory * (1UL << 20);
+		config.max_address_space = config.max_address_space * (1UL << 20);
+		config.max_req_mem = config.max_req_mem * (1UL << 20);
+		config.limit_req_mem = config.limit_req_mem * (1UL << 20);
+		config.shared_memory = config.shared_memory * (1UL << 20);
+		// As a catch-all we will make everything verbose when VERBOSE=1
+		if (getenv("VERBOSE") != nullptr) {
+			config.verbose = true;
+			config.verbose_syscalls = true;
+		}
 		return config;
 
 	} catch (const nlohmann::json::exception& e) {

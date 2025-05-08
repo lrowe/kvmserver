@@ -1,6 +1,6 @@
 #include <cstdio>
-#include <fstream>
-#include "config.hpp"
+#include "vm.hpp"
+extern std::vector<uint8_t> file_loader(const std::string& filename);
 
 int main(int argc, char* argv[])
 {
@@ -18,7 +18,7 @@ int main(int argc, char* argv[])
 		}
 		printf("]\n");
 		// Environment variables
-		printf("Environment Variables: [");
+		printf("Environment: [");
 		for (const auto& env : config.environ) {
 			printf("%s ", env.c_str());
 		}
@@ -28,8 +28,18 @@ int main(int argc, char* argv[])
 			printf("Allowed Path: %s -> %s\n", path.real_path.c_str(), path.virtual_path.c_str());
 		}
 
+		VirtualMachine::init_kvm();
+
+		// Read the binary file
+		std::vector<uint8_t> binary = file_loader(config.filename);
+
+		// Create a VirtualMachine instance
+		VirtualMachine vm(binary, config);
+		vm.initialize();
+
 	} catch (const std::exception& e) {
 		fprintf(stderr, "Error: %s\n", e.what());
+		fprintf(stderr, "The server has stopped.\n");
 		return 1;
 	}
 	return 0;

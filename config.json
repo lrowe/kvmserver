@@ -2,6 +2,8 @@
 	"server_port": 8080,
 	"filename": "$HOME/github/deno/target/release/deno",
 	"concurrency": 4,
+	"max_boot_time": 1000,
+	"max_memory": 4400,
 	"main_arguments": [
 		"run",
 		"--allow-all",
@@ -9,15 +11,16 @@
 	],
 	"environment": [
 		"DENO_V8_FLAGS=--single-threaded,--max-old-space-size=64,--max-semi-space-size=64",
-		"DENO_DIR=/home/gonzo/.cache/deno",
+		"DENO_DIR=$HOME/.cache/deno",
 		"DENO_NO_UPDATE_CHECK=1"
 	],
-	"executable_remapping": {
+	"executable_remappings": {
 		"caged_heap": ["0x1000000000", 64]
 	},
-	"remapping": {
+	"remappings": {
 		"dont_know": ["0xC00000000", 64]
 	},
+	"executable_heap": true,
 	"current_working_directory": "$PWD/program/deno",
 	"allowed_paths": [
 		"/dev/urandom",
@@ -27,7 +30,7 @@
 		"/lib/x86_64-linux-gnu/libcap.so.2",
 		"/lib/x86_64-linux-gnu/libnss_mdns4_minimal.so.2",
 		"$$HOME/.cache/deno",
-		"$$PWD/program/deno",
+		"$$PWD/deno",
 		{
 			"real": "$HOME/.cache/deno/dep_analysis_cache_v2",
 			"writable": true,
