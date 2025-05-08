@@ -2,11 +2,11 @@
 	"server_port": 8080,
 	"filename": "$HOME/github/deno/target/release/deno",
 	"concurrency": 32,
-	"max_boot_time": 1000,
 	"max_memory": 4400,
 	"main_arguments": [
 		"run",
 		"--allow-all",
+		"--unstable-net",
 		"$PWD/deno/main.ts"
 	],
 	"environment": [

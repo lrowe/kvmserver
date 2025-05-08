@@ -4,6 +4,7 @@ console.log("Hello from deno inside TinyKVM");
 
 Deno.serve({
 	port: 8080,
+	reusePort: true,
 }, async (req) => {
   const url = new URL(req.url);
   const path = url.pathname;
