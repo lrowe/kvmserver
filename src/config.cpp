@@ -1,6 +1,7 @@
 #include "config.hpp"
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <thread>
 
 static std::string apply_dollar_vars(std::string str)
 {
@@ -81,10 +82,12 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 	}
 
 	nlohmann::json json;
-	file >> json;
-	if (json.is_null()) {
-		// Print error message from the JSON library
+	// Allow comments in the JSON file
+	try {
+		json = json.parse(file, nullptr, false, true);
+	} catch (const nlohmann::json::parse_error& e) {
 		fprintf(stderr, "Error parsing JSON file: %s\n", filename.c_str());
+		fprintf(stderr, "Error: %s\n", e.what());
 		throw std::runtime_error("Invalid JSON format in configuration file: " + filename);
 	}
 
@@ -93,6 +96,9 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		config.server_address = json.value("server_address", config.server_address);
 		config.server_port = json.value("server_port", config.server_port);
 		config.concurrency = json.value("concurrency", config.concurrency);
+		if (config.concurrency == 0) {
+			config.concurrency = std::thread::hardware_concurrency();
+		}
 		// The filename is required
 		if (!json.contains("filename")) {
 			fprintf(stderr, "Missing required field 'filename' in configuration file: %s\n", filename.c_str());

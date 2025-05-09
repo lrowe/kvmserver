@@ -24,6 +24,8 @@ struct VirtualMachine
 	BinaryType binary_type() const noexcept { return m_binary_type; }
 	std::string binary_type_string() const noexcept;
 
+	void open_debugger();
+
 	VirtualMachine(const std::vector<uint8_t>& binary, const Configuration& config);
 	VirtualMachine(const VirtualMachine& other);
 	~VirtualMachine();

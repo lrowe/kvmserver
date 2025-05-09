@@ -121,6 +121,8 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other)
 	// Set the current working directory
 	machine().fds().set_current_working_directory(
 		other.config().current_working_directory);
+	// Disable epoll_wait() preemption when timeout=-1
+	machine().fds().set_preempt_epoll_wait(false);
 	/* Allow open read-only files */
 	for (auto& path : config().allowed_paths) {
 		if (path.writable) {
@@ -258,4 +260,32 @@ void VirtualMachine::init_kvm()
 
 	// Initialize the KVM subsystem
 	tinykvm::Machine::init();
+}
+
+#include <tinykvm/rsp_client.hpp>
+void VirtualMachine::open_debugger()
+{
+	const uint16_t port = 2159;
+	tinykvm::RSP server(machine(), port);
+	while (true) {
+		fprintf(stderr, "Waiting 60s for remote GDB on port %u...\n", port);
+		auto client = server.accept(60);
+		if (!client) {
+			fprintf(stderr, "Failed to accept client\n");
+			break;
+		}
+		fprintf(stderr, "Now debugging %s\n", name().c_str());
+		bool running = true;
+		while (running) {
+			try {
+				running = client->process_one();
+			} catch (const tinykvm::MachineException& me) {
+				fprintf(stderr, "Debugger error: %s Data: 0x%#lX\n",
+					me.what(), me.data());
+			} catch (const std::exception& e) {
+				fprintf(stderr, "Debugger error: %s\n", e.what());
+			}
+		}
+		fprintf(stderr, "Debugger client disconnected\n");
+	}
 }

@@ -1,6 +1,6 @@
 import { connect } from "jsr:@db/redis";
 
-console.log("Hello from deno inside TinyKVM");
+console.log("Hello from Deno inside TinyKVM");
 
 Deno.serve({
 	port: 8080,

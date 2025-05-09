@@ -9,7 +9,7 @@ struct Configuration
 {
 	std::string server_address = "127.0.0.1";
 	uint16_t server_port = 8080;
-	uint16_t concurrency = 2; /* Request VMs */
+	uint16_t concurrency = 0; /* Request VMs */
 	std::string filename;
 	std::vector<std::string> environ {
 		"LC_TYPE=C", "LC_ALL=C", "USER=root"

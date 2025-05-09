@@ -13,25 +13,27 @@ int main(int argc, char* argv[])
 		// Load the configuration file
 		Configuration config = Configuration::FromJsonFile(config_file);
 		// Print some configuration values
-		printf("Server Address: %s\n", config.server_address.c_str());
-		printf("Server Port: %u\n", config.server_port);
-		printf("Concurrency: %u\n", config.concurrency);
-		printf("Filename: %s\n", config.filename.c_str());
-		// Main arguments
-		printf("Main arguments: [");
-		for (const auto& arg : config.main_arguments) {
-			printf("%s ", arg.c_str());
-		}
-		printf("]\n");
-		// Environment variables
-		printf("Environment: [");
-		for (const auto& env : config.environ) {
-			printf("%s ", env.c_str());
-		}
-		printf("]\n");
-		// Allowed paths
-		for (const auto& path : config.allowed_paths) {
-			printf("Allowed Path: %s -> %s\n", path.real_path.c_str(), path.virtual_path.c_str());
+		if (getenv("VERBOSE") != nullptr) {
+			printf("Server Address: %s\n", config.server_address.c_str());
+			printf("Server Port: %u\n", config.server_port);
+			printf("Concurrency: %u\n", config.concurrency);
+			printf("Filename: %s\n", config.filename.c_str());
+			// Main arguments
+			printf("Main arguments: [");
+			for (const auto& arg : config.main_arguments) {
+				printf("%s ", arg.c_str());
+			}
+			printf("]\n");
+			// Environment variables
+			printf("Environment: [");
+			for (const auto& env : config.environ) {
+				printf("%s ", env.c_str());
+			}
+			printf("]\n");
+			// Allowed paths
+			for (const auto& path : config.allowed_paths) {
+				printf("Allowed Path: %s -> %s\n", path.real_path.c_str(), path.virtual_path.c_str());
+			}
 		}
 
 		VirtualMachine::init_kvm();
@@ -57,7 +59,13 @@ int main(int argc, char* argv[])
 			}
 			return true; // Call epoll_wait
 		});
+		// Initialize the VM by running through main()
 		vm.initialize();
+		// Check if the VM is (likely) waiting for requests
+		if (!vm.is_waiting_for_requests()) {
+			fprintf(stderr, "The program did not wait for requests\n");
+			return 1;
+		}
 
 		// Start VM forks
 		std::vector<std::thread> threads;
@@ -69,11 +77,9 @@ int main(int argc, char* argv[])
 			threads.emplace_back([&vm, i]() {
 				// Fork a new VM
 				VirtualMachine forked_vm(vm);
-				forked_vm.machine().fds().set_preempt_epoll_wait(false);
 				try {
 					while (true) {
 						forked_vm.machine().run();
-						fprintf(stderr, "Forked VM finished, retrying...\n");
 					}
 				} catch (const tinykvm::MachineTimeoutException& me) {
 					fprintf(stderr, "*** Forked VM %u timed out\n", i);
@@ -84,6 +90,9 @@ int main(int argc, char* argv[])
 				} catch (const std::exception& e) {
 					fprintf(stderr, "*** Forked VM %u Error: %s\n", i, e.what());
 					fprintf(stderr, "The server has stopped.\n");
+				}
+				if (getenv("DEBUG") != nullptr) {
+					forked_vm.open_debugger();
 				}
 			});
 		}
