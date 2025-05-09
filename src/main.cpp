@@ -6,7 +6,12 @@ extern std::vector<uint8_t> file_loader(const std::string& filename);
 int main(int argc, char* argv[])
 {
 	try {
-		Configuration config = Configuration::FromJsonFile(argv[1]);
+		std::string config_file = "config.json";
+		if (argc > 1) {
+			config_file = argv[1];
+		}
+		// Load the configuration file
+		Configuration config = Configuration::FromJsonFile(config_file);
 		// Print some configuration values
 		printf("Server Address: %s\n", config.server_address.c_str());
 		printf("Server Port: %u\n", config.server_port);
