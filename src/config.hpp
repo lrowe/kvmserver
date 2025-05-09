@@ -7,14 +7,8 @@
 
 struct Configuration
 {
-	std::string server_address = "127.0.0.1";
-	uint16_t server_port = 8080;
-	uint16_t concurrency = 0; /* Request VMs */
 	std::string filename;
-	std::vector<std::string> environ {
-		"LC_TYPE=C", "LC_ALL=C", "USER=root"
-	};
-	std::vector<std::string> main_arguments;
+	uint16_t concurrency = 0; /* Request VMs */
 
 	float    max_boot_time = 5.0f; /* Seconds */
 	float    max_req_time  = 5.0f; /* Seconds */
@@ -38,6 +32,11 @@ struct Configuration
 	bool     verbose = false;
 	bool     verbose_syscalls = false;
 	bool     verbose_pagetable = false;
+
+	std::vector<std::string> environ {
+		"LC_TYPE=C", "LC_ALL=C", "USER=root"
+	};
+	std::vector<std::string> main_arguments;
 
 	std::vector<tinykvm::VirtualRemapping> vmem_remappings;
 

@@ -16,10 +16,8 @@ int main(int argc, char* argv[])
 		Configuration config = Configuration::FromJsonFile(config_file);
 		// Print some configuration values
 		if (getenv("VERBOSE") != nullptr) {
-			printf("Server Address: %s\n", config.server_address.c_str());
-			printf("Server Port: %u\n", config.server_port);
-			printf("Concurrency: %u\n", config.concurrency);
 			printf("Filename: %s\n", config.filename.c_str());
+			printf("Concurrency: %u\n", config.concurrency);
 			// Main arguments
 			printf("Main arguments: [");
 			for (const auto& arg : config.main_arguments) {

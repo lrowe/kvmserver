@@ -93,8 +93,6 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 
 	// Parse the JSON data into the Configuration object
 	try {
-		config.server_address = json.value("server_address", config.server_address);
-		config.server_port = json.value("server_port", config.server_port);
 		config.concurrency = json.value("concurrency", config.concurrency);
 		if (config.concurrency == 0) {
 			config.concurrency = std::thread::hardware_concurrency();
