@@ -69,6 +69,7 @@ int main(int argc, char* argv[])
 			threads.emplace_back([&vm, i]() {
 				// Fork a new VM
 				VirtualMachine forked_vm(vm);
+				forked_vm.machine().fds().set_preempt_epoll_wait(false);
 				try {
 					while (true) {
 						forked_vm.machine().run();

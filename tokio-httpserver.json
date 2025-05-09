@@ -3,6 +3,5 @@
 	"filename": "$PWD/tokio/target/release/httpserver",
 	"concurrency": 1,
 	"main_arguments": ["127.0.0.1:8080"],
-	"executable_heap": true,
-	"allowed_paths": []
+	"executable_heap": true
 }
