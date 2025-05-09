@@ -1,10 +1,12 @@
 #include <cstdio>
 #include <thread>
+#include <sys/signal.h>
 #include "vm.hpp"
 extern std::vector<uint8_t> file_loader(const std::string& filename);
 
 int main(int argc, char* argv[])
 {
+	signal(SIGPIPE, SIG_IGN); // How much misery has this misfeature caused?
 	try {
 		std::string config_file = "config.json";
 		if (argc > 1) {
