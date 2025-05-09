@@ -28,6 +28,21 @@ Transfer/sec:     29.23MB
 ```
 Deno has good performance. 12us on average single-threaded.
 
+> $ deno serve --parallel --allow-all --unstable-net deno/main.ts
+
+Deno serve seems to be a wrapper around fork():
+```sh
+$ ./wrk -c64 -t64 http://127.00.1:8080
+Running 10s test @ http://127.00.1:8080
+  64 threads and 64 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    84.89us  335.01us  19.62ms   98.35%
+    Req/Sec    17.48k     2.47k   35.03k    83.03%
+  11240457 requests in 10.10s, 1.62GB read
+Requests/sec: 1112864.20
+Transfer/sec:    164.50MB
+```
+
 Deno sandboxed in TinyKVM:
 ```sh
 $ ./wrk -c1 -t1 http://127.00.1:8080
