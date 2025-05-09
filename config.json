@@ -24,6 +24,9 @@
 		"/lib/x86_64-linux-gnu/libnss_systemd.so.2",
 		"/lib/x86_64-linux-gnu/libcap.so.2",
 		"/lib/x86_64-linux-gnu/libnss_mdns4_minimal.so.2",
+		"/home",
+		"$HOME",
+		"$HOME/.cache",
 		"$$HOME/.cache/deno",
 		"$$PWD/deno",
 		{
