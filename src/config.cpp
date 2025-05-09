@@ -130,6 +130,7 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		config.hugepage_arena_size = json.value("hugepage_arena_size", config.hugepage_arena_size);
 		config.hugepage_requests_arena = json.value("hugepage_requests_arena", config.hugepage_requests_arena);
 		config.executable_heap = json.value("executable_heap", config.executable_heap);
+		config.clock_gettime_uses_rdtsc = json.value("clock_gettime_uses_rdtsc", config.clock_gettime_uses_rdtsc);
 		config.hugepages = json.value("hugepages", config.hugepages);
 		config.split_hugepages = json.value("split_hugepages", config.split_hugepages);
 		config.transparent_hugepages = json.value("transparent_hugepages", config.transparent_hugepages);
