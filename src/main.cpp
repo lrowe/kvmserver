@@ -112,12 +112,12 @@ int main(int argc, char* argv[])
 			{
 				// Fork a new VM
 				VirtualMachine forked_vm(vm);
+				int new_vfd = -1;
 				// When a VM is ephemeral we try to detect when a client
 				// disconnects, so we can reset the VM and accept a new connection
 				// with a clean slate.
 				if (vm.config().ephemeral)
 				{
-					int new_vfd = -1;
 					forked_vm.machine().fds().accept_socket_callback =
 					[&](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
 						if (new_vfd != -1) {
@@ -131,6 +131,16 @@ int main(int argc, char* argv[])
 						// We no longer accept connections, as ephemeral VMs shouldn't
 						// be handling multiple clients at once. If one client sends
 						// multiple requests, that is fine.
+						for (auto& entry : forked_vm.machine().fds().get_epoll_entries()) {
+							auto it = entry.second->epoll_fds.find(listener_vfd);
+							if (it != entry.second->epoll_fds.end()) {
+								// Remove the listener from the epoll set
+								// It will be added back when the VM is reset
+								epoll_ctl(entry.first, EPOLL_CTL_DEL, listener_fd, nullptr);
+								printf("Forked VM %u removed listener fd %d from epoll set\n", i, listener_fd);
+								break;
+							}
+						}
 						forked_vm.machine().fds().set_accepting_connections(false);
 						return new_vfd;
 					};
@@ -138,7 +148,7 @@ int main(int argc, char* argv[])
 					[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
 						if (vfd == new_vfd) {
 							if (verbose) {
-								printf("Forked VM %u closed connection on fd %d\n", i, new_vfd);
+								printf("Forked VM %u closed connection on fd %d. Resetting...\n", i, new_vfd);
 							}
 							new_vfd = -1;
 							forked_vm.machine().fds().set_accepting_connections(true);
@@ -170,6 +180,7 @@ int main(int argc, char* argv[])
 							forked_vm.open_debugger();
 						} else {
 							printf("Forked VM %u finished. Resetting...\n", i);
+							new_vfd = -1;
 							forked_vm.reset_to(vm);
 						}
 					}
