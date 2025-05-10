@@ -1,8 +1,10 @@
+#include <atomic>
 #include <cstdio>
 #include <thread>
 #include <sys/signal.h>
 #include "vm.hpp"
 extern std::vector<uint8_t> file_loader(const std::string& filename);
+static std::atomic<uint64_t> g_reset_counter = 0;
 
 int main(int argc, char* argv[])
 {
@@ -137,7 +139,10 @@ int main(int argc, char* argv[])
 								// Remove the listener from the epoll set
 								// It will be added back when the VM is reset
 								epoll_ctl(entry.first, EPOLL_CTL_DEL, listener_fd, nullptr);
-								printf("Forked VM %u removed listener fd %d from epoll set\n", i, listener_fd);
+								if (verbose) {
+									printf("Forked VM %u removed listener fd %d from epoll set (resets=%lu)\n",
+										i, listener_fd, g_reset_counter.load());
+								}
 								break;
 							}
 						}
@@ -153,6 +158,16 @@ int main(int argc, char* argv[])
 							new_vfd = -1;
 							forked_vm.machine().fds().set_accepting_connections(true);
 							forked_vm.reset_to(vm);
+							// Progressively print the reset counter
+							const uint64_t reset_counter = g_reset_counter.fetch_add(1);
+							if (i == 0) {
+								if (reset_counter % 64 == 0) {
+									fprintf(stderr, "\rForked VM %u has been reset %lu times\n", i, reset_counter);
+								} else {
+									// Print a dot in between resets
+									fprintf(stderr, ".");
+								}
+							}
 							return true; // The VM was reset
 						}
 						return false; // Nothing happened

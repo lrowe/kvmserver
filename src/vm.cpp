@@ -159,6 +159,7 @@ void VirtualMachine::reset_to(VirtualMachine& other)
 		.reset_copy_all_registers = true,
 		.reset_keep_all_work_memory = !this->m_reset_needed && other.config().ephemeral_keep_working_memory,
 	});
+	this->m_reset_needed = false;
 }
 
 void VirtualMachine::initialize(std::function<void()> warmup_callback)
