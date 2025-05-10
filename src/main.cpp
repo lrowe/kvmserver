@@ -113,54 +113,24 @@ int main(int argc, char* argv[])
 			threads.emplace_back([&vm, i, verbose]()
 			{
 				// Fork a new VM
-				VirtualMachine forked_vm(vm);
-				int new_vfd = -1;
-				// When a VM is ephemeral we try to detect when a client
-				// disconnects, so we can reset the VM and accept a new connection
-				// with a clean slate.
-				if (vm.config().ephemeral)
+				VirtualMachine forked_vm(vm, i);
+				forked_vm.set_on_reset_callback([&vm, i]()
 				{
-					forked_vm.machine().fds().accept_socket_callback =
-					[&](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
-						if (new_vfd != -1) {
-							fprintf(stderr, "Forked VM %u already has a connection on fd %d\n", i, new_vfd);
-							return -EAGAIN;
-						}
-						new_vfd = forked_vm.machine().fds().manage(fd, true, true);
-						if (verbose) {
-							printf("Forked VM %u accepted connection on fd %d\n", i, new_vfd);
-						}
-						forked_vm.machine().fds().set_accepting_connections(false);
-						return new_vfd;
-					};
-					forked_vm.machine().fds().free_fd_callback =
-					[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
-						if (vfd == new_vfd) {
-							if (verbose) {
-								printf("Forked VM %u closed connection on fd %d. Resetting...\n", i, new_vfd);
+					// Progressively print the reset counter
+					const uint64_t reset_counter = reset_counters.at(i).fetch_add(1);
+					if (i == 0) {
+						if (reset_counter % 64 == 0) {
+							std::string counters_str;
+							for (unsigned int j = 0; j < vm.config().concurrency; ++j) {
+								counters_str += std::to_string(j) + ": " + std::to_string(reset_counters[j].load()) + " ";
 							}
-							new_vfd = -1;
-							forked_vm.machine().fds().set_accepting_connections(true);
-							forked_vm.reset_to(vm);
-							// Progressively print the reset counter
-							const uint64_t reset_counter = reset_counters.at(i).fetch_add(1);
-							if (i == 0) {
-								if (reset_counter % 64 == 0) {
-									std::string counters_str;
-									for (unsigned int j = 0; j < vm.config().concurrency; ++j) {
-										counters_str += std::to_string(j) + ": " + std::to_string(reset_counters[j].load()) + " ";
-									}
-									fprintf(stderr, "\rForked VMs have been reset: %s\n", counters_str.c_str());
-								} else {
-									// Print a dot in between resets
-									fprintf(stderr, ".");
-								}
-							}
-							return true; // The VM was reset
+							fprintf(stderr, "\rForked VMs have been reset: %s\n", counters_str.c_str());
+						} else {
+							// Print a dot in between resets
+							fprintf(stderr, ".");
 						}
-						return false; // Nothing happened
-					};
-				}
+					}
+				});
 				while (true) {
 					bool failure = false;
 					try {
@@ -185,8 +155,6 @@ int main(int argc, char* argv[])
 					if (vm.config().ephemeral) {
 						printf("Forked VM %u finished. Resetting...\n", i);
 						try {
-							new_vfd = -1;
-							forked_vm.machine().fds().set_accepting_connections(true);
 							forked_vm.reset_to(vm);
 						} catch (const std::exception& e) {
 							fprintf(stderr, "*** Forked VM %u failed to reset: %s\n", i, e.what());

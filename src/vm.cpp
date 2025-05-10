@@ -99,7 +99,7 @@ VirtualMachine::VirtualMachine(const std::vector<uint8_t>& binary, const Configu
 		return false;
 	});
 }
-VirtualMachine::VirtualMachine(const VirtualMachine& other)
+VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	: m_machine(other.m_machine, tinykvm::MachineOptions{
 		.max_mem = other.config().max_main_memory,
 		.max_cow_mem = other.config().max_req_mem,
@@ -110,7 +110,9 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other)
 	  }),
 	  m_config(other.m_config),
 	  m_original_binary(other.m_original_binary),
-	  m_binary_type(other.m_binary_type)
+	  m_binary_type(other.m_binary_type),
+	  m_ephemeral(m_config.ephemeral),
+	  m_master_instance(&other)
 {
 	machine().set_userdata<VirtualMachine> (this);
 	machine().fds().set_verbose(config().verbose);
@@ -143,6 +145,36 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other)
 		(void)addr;
 		return true;
 	});
+	// When a VM is ephemeral we try to detect when a client
+	// disconnects, so we can reset the VM and accept a new connection
+	// with a clean slate.
+	if (config().ephemeral)
+	{
+		machine().fds().accept_socket_callback =
+		[&, reqid](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
+			if (m_tracked_client_fd != -1) {
+				fprintf(stderr, "Forked VM %u already has a connection on fd %d\n", reqid, m_tracked_client_fd);
+				return -EAGAIN;
+			}
+			m_tracked_client_fd = machine().fds().manage(fd, true, true);
+			if (config().verbose) {
+				printf("Forked VM %u accepted connection on fd %d\n", reqid, m_tracked_client_fd);
+			}
+			machine().fds().set_accepting_connections(false);
+			return m_tracked_client_fd;
+		};
+		machine().fds().free_fd_callback =
+		[&, reqid](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
+			if (vfd == m_tracked_client_fd) {
+				if (config().verbose) {
+					printf("Forked VM %u closed connection on fd %d. Resetting...\n", reqid, m_tracked_client_fd);
+				}
+				this->reset_to(*m_master_instance);
+				return true; // The VM was reset
+			}
+			return false; // Nothing happened
+		};
+	}
 }
 VirtualMachine::~VirtualMachine()
 {
@@ -150,7 +182,7 @@ VirtualMachine::~VirtualMachine()
 	printf("VirtualMachine destructor\n");
 }
 
-void VirtualMachine::reset_to(VirtualMachine& other)
+void VirtualMachine::reset_to(const VirtualMachine& other)
 {
 	m_machine.reset_to(other.m_machine, tinykvm::MachineOptions{
 		.max_mem = other.m_machine.max_address(),
@@ -160,6 +192,12 @@ void VirtualMachine::reset_to(VirtualMachine& other)
 		.reset_keep_all_work_memory = !this->m_reset_needed && other.config().ephemeral_keep_working_memory,
 	});
 	this->m_reset_needed = false;
+	if (this->m_on_reset_callback) {
+		this->m_on_reset_callback();
+	}
+
+	this->m_tracked_client_fd = -1;
+	machine().fds().set_accepting_connections(true);
 }
 
 void VirtualMachine::initialize(std::function<void()> warmup_callback)
