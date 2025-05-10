@@ -7,6 +7,7 @@ extern std::vector<uint8_t> file_loader(const std::string& filename);
 int main(int argc, char* argv[])
 {
 	signal(SIGPIPE, SIG_IGN); // How much misery has this misfeature caused?
+	const bool verbose = getenv("VERBOSE") != nullptr;
 	try {
 		std::string config_file = "config.json";
 		if (argc > 1) {
@@ -44,11 +45,11 @@ int main(int argc, char* argv[])
 		// Create a VirtualMachine instance
 		VirtualMachine vm(binary, config);
 		int listening_fd = -1;
-		vm.machine().fds().set_listening_socket_callback(
-			[&](int vfd, int fd) {
-				listening_fd = fd;
-			});
-		vm.machine().fds().set_epoll_wait_callback(
+		vm.machine().fds().listening_socket_callback =
+		[&](int vfd, int fd) {
+			listening_fd = fd;
+		};
+		vm.machine().fds().epoll_wait_callback =
 		[&](int vfd, int epfd, int timeout) {
 			if (listening_fd != -1) {
 				// If the listening socket is found, we are now waiting for
@@ -58,9 +59,42 @@ int main(int argc, char* argv[])
 				return false; // Don't call epoll_wait
 			}
 			return true; // Call epoll_wait
-		});
+		};
 		// Initialize the VM by running through main()
-		vm.initialize();
+		const int warmup_requests = 2;
+		vm.initialize([&] {
+			// No need to warm up the JIT compiler if we are not using ephemeral VMs
+			if (!config.ephemeral) {
+				return;
+			}
+			printf("Warming up the guest VM...\n");
+			vm.set_waiting_for_requests(false);
+			// Waiting for a certain amount of requests in order
+			// to warm up the JIT compiler in the VM
+			int freed_fds = 0;
+			auto old_listening_fd = listening_fd;
+			listening_fd = -1;
+			vm.machine().fds().free_fd_callback =
+			[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
+				freed_fds++;
+				if (freed_fds >= warmup_requests) {
+					fprintf(stderr, "Warmed up the JIT compiler\n");
+					vm.set_waiting_for_requests(true);
+					vm.machine().stop();
+					return true; // The VM was reset
+				}
+				return false; // Nothing happened
+			};
+			// Run the VM until it stops
+			vm.machine().run();
+			// Make sure the program is waiting for requests
+			if (!vm.is_waiting_for_requests()) {
+				fprintf(stderr, "The program did not wait for requests after warmup\n");
+				throw std::runtime_error("The program did not wait for requests after warmup");
+			}
+			// Restore the listening socket
+			listening_fd = old_listening_fd;
+		});
 		// Check if the VM is (likely) waiting for requests
 		if (!vm.is_waiting_for_requests()) {
 			fprintf(stderr, "The program did not wait for requests\n");
@@ -74,25 +108,71 @@ int main(int argc, char* argv[])
 
 		for (unsigned int i = 0; i < config.concurrency; ++i)
 		{
-			threads.emplace_back([&vm, i]() {
+			threads.emplace_back([&vm, i, verbose]()
+			{
 				// Fork a new VM
 				VirtualMachine forked_vm(vm);
-				try {
-					while (true) {
-						forked_vm.machine().run();
-					}
-				} catch (const tinykvm::MachineTimeoutException& me) {
-					fprintf(stderr, "*** Forked VM %u timed out\n", i);
-					fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
-				} catch (const tinykvm::MachineException& me) {
-					fprintf(stderr, "*** Forked VM %u Error: %s Data: 0x%#lX\n",
-						i, me.what(), me.data());
-				} catch (const std::exception& e) {
-					fprintf(stderr, "*** Forked VM %u Error: %s\n", i, e.what());
-					fprintf(stderr, "The server has stopped.\n");
+				// When a VM is ephemeral we try to detect when a client
+				// disconnects, so we can reset the VM and accept a new connection
+				// with a clean slate.
+				if (vm.config().ephemeral)
+				{
+					int new_vfd = -1;
+					forked_vm.machine().fds().accept_socket_callback =
+					[&](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
+						if (new_vfd != -1) {
+							fprintf(stderr, "Forked VM %u already has a connection on fd %d\n", i, new_vfd);
+							return -EAGAIN;
+						}
+						new_vfd = forked_vm.machine().fds().manage(fd, true, true);
+						if (verbose) {
+							printf("Forked VM %u accepted connection on fd %d\n", i, new_vfd);
+						}
+						// We no longer accept connections, as ephemeral VMs shouldn't
+						// be handling multiple clients at once. If one client sends
+						// multiple requests, that is fine.
+						forked_vm.machine().fds().set_accepting_connections(false);
+						return new_vfd;
+					};
+					forked_vm.machine().fds().free_fd_callback =
+					[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
+						if (vfd == new_vfd) {
+							if (verbose) {
+								printf("Forked VM %u closed connection on fd %d\n", i, new_vfd);
+							}
+							new_vfd = -1;
+							forked_vm.machine().fds().set_accepting_connections(true);
+							forked_vm.reset_to(vm);
+							return true; // The VM was reset
+						}
+						return false; // Nothing happened
+					};
 				}
-				if (getenv("DEBUG") != nullptr) {
-					forked_vm.open_debugger();
+				while (true) {
+					bool failure = false;
+					try {
+						forked_vm.machine().vmresume();
+					} catch (const tinykvm::MachineTimeoutException& me) {
+						fprintf(stderr, "*** Forked VM %u timed out\n", i);
+						fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
+						failure = true;
+					} catch (const tinykvm::MachineException& me) {
+						fprintf(stderr, "*** Forked VM %u Error: %s Data: 0x%#lX\n",
+							i, me.what(), me.data());
+						failure = true;
+					} catch (const std::exception& e) {
+						fprintf(stderr, "*** Forked VM %u Error: %s\n", i, e.what());
+						fprintf(stderr, "The server has stopped.\n");
+						failure = true;
+					}
+					if (failure) {
+						if (getenv("DEBUG") != nullptr) {
+							forked_vm.open_debugger();
+						} else {
+							printf("Forked VM %u finished. Resetting...\n", i);
+							forked_vm.reset_to(vm);
+						}
+					}
 				}
 			});
 		}

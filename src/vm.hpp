@@ -29,7 +29,7 @@ struct VirtualMachine
 	VirtualMachine(const std::vector<uint8_t>& binary, const Configuration& config);
 	VirtualMachine(const VirtualMachine& other);
 	~VirtualMachine();
-	void initialize();
+	void initialize(std::function<void()> = nullptr);
 	void reset_to(VirtualMachine&);
 	static void init_kvm();
 private:

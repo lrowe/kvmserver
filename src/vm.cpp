@@ -161,7 +161,7 @@ void VirtualMachine::reset_to(VirtualMachine& other)
 	});
 }
 
-void VirtualMachine::initialize()
+void VirtualMachine::initialize(std::function<void()> warmup_callback)
 {
 	try {
 		const auto stack = machine().mmap_allocate(settings::MAIN_STACK_SIZE);
@@ -213,6 +213,11 @@ void VirtualMachine::initialize()
 		// Make sure the program is waiting for requests
 		if (!is_waiting_for_requests()) {
 			throw std::runtime_error("Program did not wait for requests");
+		}
+
+		// If a warmup callback is provided, call it
+		if (warmup_callback) {
+			warmup_callback();
 		}
 
 		// The VM is currently paused in kernel mode in a system call handler
