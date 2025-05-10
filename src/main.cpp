@@ -63,7 +63,7 @@ int main(int argc, char* argv[])
 			return true; // Call epoll_wait
 		};
 		// Initialize the VM by running through main()
-		const int warmup_requests = 2;
+		const int warmup_requests = 500;
 		vm.initialize([&] {
 			// No need to warm up the JIT compiler if we are not using ephemeral VMs
 			if (!config.ephemeral) {
