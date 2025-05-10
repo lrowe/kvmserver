@@ -4,7 +4,7 @@
 #include <sys/signal.h>
 #include "vm.hpp"
 extern std::vector<uint8_t> file_loader(const std::string& filename);
-static std::atomic<uint64_t> g_reset_counter = 0;
+static std::array<std::atomic<uint64_t>, 64> reset_counters;
 
 int main(int argc, char* argv[])
 {
@@ -130,22 +130,6 @@ int main(int argc, char* argv[])
 						if (verbose) {
 							printf("Forked VM %u accepted connection on fd %d\n", i, new_vfd);
 						}
-						// We no longer accept connections, as ephemeral VMs shouldn't
-						// be handling multiple clients at once. If one client sends
-						// multiple requests, that is fine.
-						for (auto& entry : forked_vm.machine().fds().get_epoll_entries()) {
-							auto it = entry.second->epoll_fds.find(listener_vfd);
-							if (it != entry.second->epoll_fds.end()) {
-								// Remove the listener from the epoll set
-								// It will be added back when the VM is reset
-								epoll_ctl(entry.first, EPOLL_CTL_DEL, listener_fd, nullptr);
-								if (verbose) {
-									printf("Forked VM %u removed listener fd %d from epoll set (resets=%lu)\n",
-										i, listener_fd, g_reset_counter.load());
-								}
-								break;
-							}
-						}
 						forked_vm.machine().fds().set_accepting_connections(false);
 						return new_vfd;
 					};
@@ -159,10 +143,14 @@ int main(int argc, char* argv[])
 							forked_vm.machine().fds().set_accepting_connections(true);
 							forked_vm.reset_to(vm);
 							// Progressively print the reset counter
-							const uint64_t reset_counter = g_reset_counter.fetch_add(1);
+							const uint64_t reset_counter = reset_counters.at(i).fetch_add(1);
 							if (i == 0) {
 								if (reset_counter % 64 == 0) {
-									fprintf(stderr, "\rForked VM %u has been reset %lu times\n", i, reset_counter);
+									std::string counters_str;
+									for (unsigned int j = 0; j < vm.config().concurrency; ++j) {
+										counters_str += std::to_string(j) + ": " + std::to_string(reset_counters[j].load()) + " ";
+									}
+									fprintf(stderr, "\rForked VMs have been reset: %s\n", counters_str.c_str());
 								} else {
 									// Print a dot in between resets
 									fprintf(stderr, ".");
@@ -187,16 +175,21 @@ int main(int argc, char* argv[])
 						failure = true;
 					} catch (const std::exception& e) {
 						fprintf(stderr, "*** Forked VM %u Error: %s\n", i, e.what());
-						fprintf(stderr, "The server has stopped.\n");
 						failure = true;
 					}
 					if (failure) {
 						if (getenv("DEBUG") != nullptr) {
 							forked_vm.open_debugger();
-						} else {
-							printf("Forked VM %u finished. Resetting...\n", i);
+						}
+					}
+					if (vm.config().ephemeral) {
+						printf("Forked VM %u finished. Resetting...\n", i);
+						try {
 							new_vfd = -1;
+							forked_vm.machine().fds().set_accepting_connections(true);
 							forked_vm.reset_to(vm);
+						} catch (const std::exception& e) {
+							fprintf(stderr, "*** Forked VM %u failed to reset: %s\n", i, e.what());
 						}
 					}
 				}
