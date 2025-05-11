@@ -9,7 +9,7 @@
 	"heap_address_hint": 120,
 	"executable_heap": true,
 	"main_arguments": [
-		"$PWD/node/main.js"
+		"--single-threaded", "$PWD/node/main.js"
 	],
 	"current_working_directory": "$PWD/node",
 	"allowed_paths": [
