@@ -5,17 +5,13 @@
 	"concurrency": 2,
 	"address_space": 66000,
 	"max_memory": 4400,
-	"main_arguments": [
-		"run",
-		"--allow-all"
-	],
 	"environment": [
 		"DENO_V8_FLAGS=--single-threaded,--max-old-space-size=64,--max-semi-space-size=64",
 		"DENO_DIR=$HOME/.cache/deno",
 		"DENO_NO_UPDATE_CHECK=1"
 	],
 	"executable_heap": true,
-	"current_working_directory": "$PWD/program/deno",
+	"current_working_directory": "$PWD/deno",
 	"allowed_paths": [
 		"/dev/urandom",
 		"/etc/resolv.conf",

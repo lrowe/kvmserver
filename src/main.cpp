@@ -16,20 +16,36 @@ struct CommandLineArgs
 	std::vector<std::string> remaining_args;
 };
 static const struct option longopts[] = {
-	{"concurrency", required_argument, nullptr, 'c'},
+	{"config", required_argument, nullptr, 'c'},
+	{"concurrency", required_argument, nullptr, 'C'},
 	{"ephemeral", no_argument, nullptr, 'e'},
 	{"warmup", required_argument, nullptr, 'w'},
 	{"verbose", no_argument, nullptr, 'v'},
 	{nullptr, 0, nullptr, 0}
 };
 
+static void print_usage(const char* program_name)
+{
+	fprintf(stderr, "Usage: %s -c <config.json> [options] [<args>]\n", program_name);
+	fprintf(stderr, "Options:\n");
+	fprintf(stderr, "  -c, --config <file>      Configuration file\n");
+	fprintf(stderr, "  -t, --threads <num>      Number of request VMs\n");
+	fprintf(stderr, "  -e, --ephemeral          Use ephemeral VMs\n");
+	fprintf(stderr, "  -w, --warmup <num>       Number of warmup requests (default: 250)\n");
+	fprintf(stderr, "  -v, --verbose            Enable verbose output\n");
+	fprintf(stderr, "A configuration file is required in order to be able to host a program.\n");
+}
+
 static CommandLineArgs parse_command_line(int argc, char* argv[])
 {
 	CommandLineArgs args;
 	int opt;
-	while ((opt = getopt_long(argc, argv, "c:ew:v", longopts, nullptr)) != -1) {
+	while ((opt = getopt_long(argc, argv, "c:t:ew:v", longopts, nullptr)) != -1) {
 		switch (opt) {
 			case 'c':
+				args.config_file = optarg;
+				break;
+			case 't':
 				args.concurrency = static_cast<unsigned int>(std::stoul(optarg));
 				break;
 			case 'e':
@@ -42,25 +58,18 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 				args.verbose = true;
 				break;
 			default:
-				fprintf(stderr, "Usage: %s [options] <config.json>\n", argv[0]);
-				fprintf(stderr, "Options:\n");
-				fprintf(stderr, "  -c, --concurrency <num>  Number of concurrent VMs (default: 1)\n");
-				fprintf(stderr, "  -e, --ephemeral          Use ephemeral VMs\n");
-				fprintf(stderr, "  -w, --warmup <num>       Number of warmup requests (default: 250)\n");
-				fprintf(stderr, "  -v, --verbose            Enable verbose output\n");
+				print_usage(argv[0]);
 				exit(EXIT_FAILURE);
 		}
 	}
-	// The config file is the last argument
-	if (optind < argc) {
-		args.config_file = argv[optind];
-	} else {
-		fprintf(stderr, "Error: Missing configuration file\n");
-		fprintf(stderr, "Usage: %s [options] <config.json>\n", argv[0]);
+	// Check if a configuration file was provided
+	if (args.config_file.empty()) {
+		fprintf(stderr, "Error: Configuration file is required\n");
+		print_usage(argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	// Remaining arguments are stored in args.remaining_args
-	for (int i = optind + 1; i < argc; ++i) {
+	for (int i = optind; i < argc; ++i) {
 		args.remaining_args.push_back(argv[i]);
 	}
 	return args;
