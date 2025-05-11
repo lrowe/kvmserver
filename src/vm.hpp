@@ -27,6 +27,7 @@ struct VirtualMachine
 	void set_on_reset_callback(on_reset_t callback) noexcept { m_on_reset_callback = std::move(callback); }
 	void set_ephemeral(bool ephemeral) noexcept { m_ephemeral = ephemeral; }
 
+	void warmup();
 	void open_debugger();
 
 	VirtualMachine(const std::vector<uint8_t>& binary, const Configuration& config);

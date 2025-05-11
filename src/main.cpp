@@ -11,11 +11,13 @@ struct CommandLineArgs
 	unsigned int concurrency = 0;
 	bool ephemeral = false;
 	bool verbose = false;
+	uint16_t warmup_requests = 0;
 	std::string config_file;
 };
 static const struct option longopts[] = {
 	{"concurrency", required_argument, nullptr, 'c'},
 	{"ephemeral", no_argument, nullptr, 'e'},
+	{"warmup", required_argument, nullptr, 'w'},
 	{"verbose", no_argument, nullptr, 'v'},
 	{nullptr, 0, nullptr, 0}
 };
@@ -32,6 +34,9 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 			case 'e':
 				args.ephemeral = true;
 				break;
+			case 'w':
+				args.warmup_requests = static_cast<uint16_t>(std::stoul(optarg));
+				break;
 			case 'v':
 				args.verbose = true;
 				break;
@@ -40,6 +45,7 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 				fprintf(stderr, "Options:\n");
 				fprintf(stderr, "  -c, --concurrency <num>  Number of concurrent VMs (default: 1)\n");
 				fprintf(stderr, "  -e, --ephemeral          Use ephemeral VMs\n");
+				fprintf(stderr, "  -w, --warmup <num>       Number of warmup requests (default: 250)\n");
 				fprintf(stderr, "  -v, --verbose            Enable verbose output\n");
 				exit(EXIT_FAILURE);
 		}
@@ -62,13 +68,15 @@ int main(int argc, char* argv[])
 		CommandLineArgs args = parse_command_line(argc, argv);
 		// Load the configuration file
 		Configuration config = Configuration::FromJsonFile(args.config_file);
-		// If the concurrency level was set, it will override the one in the config file
+		// Anything set on the command-line will override the config file
 		if (args.concurrency > 0) {
 			config.concurrency = args.concurrency;
 		}
-		// If ephemeral VMs are requested, enable it now
 		if (args.ephemeral) {
 			config.ephemeral = true;
+		}
+		if (args.warmup_requests > 0) {
+			config.warmup_requests = args.warmup_requests;
 		}
 		// Print some configuration values
 		if (args.verbose) {
@@ -99,57 +107,9 @@ int main(int argc, char* argv[])
 
 		// Create a VirtualMachine instance
 		VirtualMachine vm(binary, config);
-		int listening_fd = -1;
-		vm.machine().fds().listening_socket_callback =
-		[&](int vfd, int fd) {
-			listening_fd = fd;
-		};
-		vm.machine().fds().epoll_wait_callback =
-		[&](int vfd, int epfd, int timeout) {
-			if (listening_fd != -1) {
-				// If the listening socket is found, we are now waiting for
-				// requests, so we can fork a new VM.
-				vm.set_waiting_for_requests(true);
-				vm.machine().stop();
-				return false; // Don't call epoll_wait
-			}
-			return true; // Call epoll_wait
-		};
 		// Initialize the VM by running through main()
-		const int warmup_requests = 500;
-		vm.initialize([&] {
-			// No need to warm up the JIT compiler if we are not using ephemeral VMs
-			if (!config.ephemeral) {
-				return;
-			}
-			printf("Warming up the guest VM...\n");
-			vm.set_waiting_for_requests(false);
-			// Waiting for a certain amount of requests in order
-			// to warm up the JIT compiler in the VM
-			int freed_fds = 0;
-			auto old_listening_fd = listening_fd;
-			listening_fd = -1;
-			vm.machine().fds().free_fd_callback =
-			[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
-				freed_fds++;
-				if (freed_fds >= warmup_requests) {
-					fprintf(stderr, "Warmed up the JIT compiler\n");
-					vm.set_waiting_for_requests(true);
-					vm.machine().stop();
-					return true; // The VM was reset
-				}
-				return false; // Nothing happened
-			};
-			// Run the VM until it stops
-			vm.machine().run();
-			// Make sure the program is waiting for requests
-			if (!vm.is_waiting_for_requests()) {
-				fprintf(stderr, "The program did not wait for requests after warmup\n");
-				throw std::runtime_error("The program did not wait for requests after warmup");
-			}
-			// Restore the listening socket
-			listening_fd = old_listening_fd;
-		});
+		// and then do a warmup, if required
+		vm.initialize(std::bind(&VirtualMachine::warmup, &vm));
 		// Check if the VM is (likely) waiting for requests
 		if (!vm.is_waiting_for_requests()) {
 			fprintf(stderr, "The program did not wait for requests\n");
