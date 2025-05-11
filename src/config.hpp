@@ -11,8 +11,8 @@ struct Configuration
 	uint16_t concurrency = 0; /* Request VMs */
 	uint16_t warmup_requests = 250; /* Warmup requests */
 
-	float    max_boot_time = 5.0f; /* Seconds */
-	float    max_req_time  = 5.0f; /* Seconds */
+	float    max_boot_time = 20.0f; /* Seconds */
+	float    max_req_time  = 8.0f; /* Seconds */
 	uint64_t max_address_space = 0; /* Megabytes */
 	uint64_t max_main_memory = 1024; /* Megabytes */
 	uint32_t max_req_mem   = 128; /* Megabytes of memory for request VMs */

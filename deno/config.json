@@ -7,8 +7,7 @@
 	"max_memory": 4400,
 	"main_arguments": [
 		"run",
-		"--allow-all",
-		"$PWD/deno/main.ts"
+		"--allow-all"
 	],
 	"environment": [
 		"DENO_V8_FLAGS=--single-threaded,--max-old-space-size=64,--max-semi-space-size=64",

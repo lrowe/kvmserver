@@ -13,6 +13,7 @@ struct CommandLineArgs
 	bool verbose = false;
 	uint16_t warmup_requests = 0;
 	std::string config_file;
+	std::vector<std::string> remaining_args;
 };
 static const struct option longopts[] = {
 	{"concurrency", required_argument, nullptr, 'c'},
@@ -58,6 +59,10 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 		fprintf(stderr, "Usage: %s [options] <config.json>\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
+	// Remaining arguments are stored in args.remaining_args
+	for (int i = optind + 1; i < argc; ++i) {
+		args.remaining_args.push_back(argv[i]);
+	}
 	return args;
 }
 
@@ -77,6 +82,9 @@ int main(int argc, char* argv[])
 		}
 		if (args.warmup_requests > 0) {
 			config.warmup_requests = args.warmup_requests;
+		}
+		for (const auto& arg : args.remaining_args) {
+			config.main_arguments.push_back(arg);
 		}
 		// Print some configuration values
 		if (args.verbose) {
