@@ -1,7 +1,8 @@
 #include "vm.hpp"
 
-#include <stdexcept>
 #include "settings.hpp"
+#include <stdexcept>
+#include <sys/signal.h>
 extern std::vector<uint8_t> file_loader(const std::string& filename);
 static std::vector<uint8_t> ld_linux_x86_64_so;
 
@@ -301,6 +302,9 @@ std::string VirtualMachine::binary_type_string() const noexcept
 
 void VirtualMachine::init_kvm()
 {
+	// How much misery has this misfeature caused?
+	signal(SIGPIPE, SIG_IGN);
+
 	// Load the dynamic linker
 	ld_linux_x86_64_so = file_loader("/lib64/ld-linux-x86-64.so.2");
 

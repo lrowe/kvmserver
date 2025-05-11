@@ -1,28 +1,77 @@
 #include <atomic>
 #include <cstdio>
+#include <getopt.h>
 #include <thread>
-#include <sys/signal.h>
 #include "vm.hpp"
 extern std::vector<uint8_t> file_loader(const std::string& filename);
 static std::array<std::atomic<uint64_t>, 64> reset_counters;
 
+struct CommandLineArgs
+{
+	unsigned int concurrency = 0;
+	bool ephemeral = false;
+	bool verbose = false;
+	std::string config_file;
+};
+static const struct option longopts[] = {
+	{"concurrency", required_argument, nullptr, 'c'},
+	{"ephemeral", no_argument, nullptr, 'e'},
+	{"verbose", no_argument, nullptr, 'v'},
+	{nullptr, 0, nullptr, 0}
+};
+
+static CommandLineArgs parse_command_line(int argc, char* argv[])
+{
+	CommandLineArgs args;
+	int opt;
+	while ((opt = getopt_long(argc, argv, "c:e", longopts, nullptr)) != -1) {
+		switch (opt) {
+			case 'c':
+				args.concurrency = static_cast<unsigned int>(std::stoul(optarg));
+				break;
+			case 'e':
+				args.ephemeral = true;
+				break;
+			case 'v':
+				args.verbose = true;
+				break;
+			default:
+				fprintf(stderr, "Usage: %s [options] <config.json>\n", argv[0]);
+				fprintf(stderr, "Options:\n");
+				fprintf(stderr, "  -c, --concurrency <num>  Number of concurrent VMs (default: 1)\n");
+				fprintf(stderr, "  -e, --ephemeral          Use ephemeral VMs\n");
+				fprintf(stderr, "  -v, --verbose            Enable verbose output\n");
+				exit(EXIT_FAILURE);
+		}
+	}
+	// The config file is the last argument
+	if (optind < argc) {
+		args.config_file = argv[optind];
+	} else {
+		fprintf(stderr, "Error: Missing configuration file\n");
+		fprintf(stderr, "Usage: %s [options] <config.json>\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+	return args;
+}
+
+
 int main(int argc, char* argv[])
 {
-	signal(SIGPIPE, SIG_IGN); // How much misery has this misfeature caused?
-	const bool verbose = getenv("VERBOSE") != nullptr;
 	try {
-		std::string config_file;
-		if (argc > 1) {
-			config_file = argv[1];
-		} else {
-			fprintf(stderr, "Usage: %s <config.json>\n", argv[0]);
-			fprintf(stderr, "Please provide a JSON configuration file.\n");
-			return 1;
-		}
+		CommandLineArgs args = parse_command_line(argc, argv);
 		// Load the configuration file
-		Configuration config = Configuration::FromJsonFile(config_file);
+		Configuration config = Configuration::FromJsonFile(args.config_file);
+		// If the concurrency level was set, it will override the one in the config file
+		if (args.concurrency > 0) {
+			config.concurrency = args.concurrency;
+		}
+		// If ephemeral VMs are requested, enable it now
+		if (args.ephemeral) {
+			config.ephemeral = true;
+		}
 		// Print some configuration values
-		if (getenv("VERBOSE") != nullptr) {
+		if (args.verbose) {
 			printf("Filename: %s\n", config.filename.c_str());
 			printf("Concurrency: %u\n", config.concurrency);
 			// Main arguments
@@ -114,7 +163,7 @@ int main(int argc, char* argv[])
 
 		for (unsigned int i = 0; i < config.concurrency; ++i)
 		{
-			threads.emplace_back([&vm, i, verbose]()
+			threads.emplace_back([&vm, i, verbose = args.verbose]()
 			{
 				// Fork a new VM
 				VirtualMachine forked_vm(vm, i);
@@ -168,7 +217,6 @@ int main(int argc, char* argv[])
 			});
 		}
 
-		fprintf(stderr, "Waiting for requests...\n");
 		// Wait for all threads to finish
 		for (auto& thread : threads) {
 			thread.join();
