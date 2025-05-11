@@ -11,9 +11,13 @@ int main(int argc, char* argv[])
 	signal(SIGPIPE, SIG_IGN); // How much misery has this misfeature caused?
 	const bool verbose = getenv("VERBOSE") != nullptr;
 	try {
-		std::string config_file = "config.json";
+		std::string config_file;
 		if (argc > 1) {
 			config_file = argv[1];
+		} else {
+			fprintf(stderr, "Usage: %s <config.json>\n", argv[0]);
+			fprintf(stderr, "Please provide a JSON configuration file.\n");
+			return 1;
 		}
 		// Load the configuration file
 		Configuration config = Configuration::FromJsonFile(config_file);
