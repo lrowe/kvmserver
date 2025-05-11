@@ -18,7 +18,7 @@ struct Configuration
 	uint32_t max_req_mem   = 128; /* Megabytes of memory for request VMs */
 	uint32_t limit_req_mem = 128; /* Megabytes to keep after request */
 	uint32_t shared_memory = 0; /* Megabytes */
-	uint32_t dylink_address_hint = 0x200000; /* Image base address hint */
+	uint32_t dylink_address_hint = 2; /* Image base address hint */
 	uint32_t heap_address_hint = 0; /* Address hint for the heap */
 	uint64_t hugepage_arena_size = 0; /* Megabytes */
 	uint64_t hugepage_requests_arena = 0; /* Megabytes */

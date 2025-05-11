@@ -26,7 +26,7 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 {
 	CommandLineArgs args;
 	int opt;
-	while ((opt = getopt_long(argc, argv, "c:e", longopts, nullptr)) != -1) {
+	while ((opt = getopt_long(argc, argv, "c:ew:v", longopts, nullptr)) != -1) {
 		switch (opt) {
 			case 'c':
 				args.concurrency = static_cast<unsigned int>(std::stoul(optarg));

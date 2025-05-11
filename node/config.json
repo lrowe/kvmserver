@@ -1,0 +1,25 @@
+{
+	"filename": "/usr/bin/node",
+	"ephemeral": true,
+	"concurrency": 2,
+	"max_boot_time": 24.0,
+	"address_space": 16000,
+	"max_memory": 24000,
+	"max_request_memory": 512,
+	"heap_address_hint": 120,
+	"executable_heap": true,
+	"main_arguments": [
+		"$PWD/node/main.js"
+	],
+	"current_working_directory": "$PWD/node",
+	"allowed_paths": [
+		"/dev/urandom",
+		"/etc/resolv.conf",
+		"/etc/ssl/openssl.cnf",
+		"$$PWD",
+		{
+			"virtual": "/proc/self/maps",
+			"real": "$PWD/node/maps.fake"
+		}
+	]
+}

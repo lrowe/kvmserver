@@ -114,8 +114,8 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		config.max_address_space = json.value("address_space", config.max_address_space);
 		config.max_address_space = std::max(config.max_address_space, config.max_main_memory);
 
-		if (json.contains("max_req_mem")) {
-			config.max_req_mem = json["max_req_mem"].get<uint32_t>();
+		if (json.contains("max_request_memory")) {
+			config.max_req_mem = json["max_request_memory"].get<uint32_t>();
 		}
 		if (json.contains("limit_req_mem")) {
 			config.limit_req_mem = json["limit_req_mem"].get<uint32_t>();
@@ -209,6 +209,8 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		config.max_req_mem = config.max_req_mem * (1UL << 20);
 		config.limit_req_mem = config.limit_req_mem * (1UL << 20);
 		config.shared_memory = config.shared_memory * (1UL << 20);
+		config.dylink_address_hint = config.dylink_address_hint * (1UL << 20);
+		config.heap_address_hint = config.heap_address_hint * (1UL << 20);
 		// As a catch-all we will make everything verbose when VERBOSE=1
 		if (getenv("VERBOSE") != nullptr) {
 			config.verbose = true;

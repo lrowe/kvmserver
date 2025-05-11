@@ -45,6 +45,7 @@ VirtualMachine::VirtualMachine(const std::vector<uint8_t>& binary, const Configu
 	machine().set_verbose_thread_syscalls(
 		config.verbose_syscalls);
 	machine().fds().set_verbose(config.verbose);
+	machine().fds().set_preempt_epoll_wait(true);
 	// Set the current working directory
 	machine().fds().set_current_working_directory(
 		config.current_working_directory);
