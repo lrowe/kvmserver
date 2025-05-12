@@ -206,6 +206,12 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 			}
 		}
 
+		// TODO: needs config option.
+		char cwd[PATH_MAX];
+		if (getcwd(cwd, sizeof(cwd)) != nullptr) {
+			config.current_working_directory = cwd;
+		}
+
 		// Raise the memory sizes into megabytes
 		config.max_address_space = config.max_address_space * (1ULL << 20);
 		config.max_main_memory = config.max_main_memory * (1ULL << 20);
