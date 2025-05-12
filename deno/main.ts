@@ -3,7 +3,7 @@ import { connect } from "jsr:@db/redis";
 console.log("Hello from Deno inside TinyKVM");
 
 Deno.serve({
-	port: 8080
+	port: 8000
 }, async (req) => {
   const url = new URL(req.url);
   const path = url.pathname;
