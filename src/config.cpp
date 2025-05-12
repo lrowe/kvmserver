@@ -1,7 +1,9 @@
 #include "config.hpp"
 #include <fstream>
+#include <limits.h>
 #include <nlohmann/json.hpp>
 #include <thread>
+#include <unistd.h>
 
 static std::string apply_dollar_vars(std::string str)
 {
