@@ -2,7 +2,6 @@
 #include <fstream>
 #include <limits.h>
 #include <nlohmann/json.hpp>
-#include <thread>
 #include <unistd.h>
 
 static std::string apply_dollar_vars(std::string str)
@@ -101,9 +100,6 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 	// Parse the JSON data into the Configuration object
 	try {
 		config.concurrency = json.value("concurrency", config.concurrency);
-		if (config.concurrency == 0) {
-			config.concurrency = std::thread::hardware_concurrency();
-		}
 		// The program filename may be specified on command line
 		config.filename = json.value("filename", config.filename);
 		config.filename = apply_dollar_vars(config.filename);

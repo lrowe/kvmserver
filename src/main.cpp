@@ -113,8 +113,10 @@ int main(int argc, char* argv[], char* envp[])
 		// Load the configuration file
 		Configuration config = Configuration::FromJsonFile(args.config_file);
 		// Anything set on the command-line will override the config file
-		if (args.concurrency >= 0) {
+		if (args.concurrency > 0) {
 			config.concurrency = args.concurrency;
+		} else if (args.concurrency == 0) {
+			config.concurrency = std::thread::hardware_concurrency();
 		}
 		if (args.ephemeral) {
 			config.ephemeral = true;
