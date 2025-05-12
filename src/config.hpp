@@ -28,7 +28,7 @@ struct Configuration
 	bool     split_hugepages = true;
 	bool     transparent_hugepages = false;
 	bool     relocate_fixed_mmap = true;
-	bool     ephemeral = true;
+	bool     ephemeral = false;
 	bool     ephemeral_keep_working_memory = true;
 	bool     verbose = false;
 	bool     verbose_syscalls = false;
