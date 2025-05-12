@@ -8,7 +8,7 @@
 struct Configuration
 {
 	std::string filename;
-	uint16_t concurrency = 0; /* Request VMs */
+	uint16_t concurrency = 1; /* Request VMs */
 	uint16_t warmup_requests = 0; /* Warmup requests */
 
 	float    max_boot_time = 20.0f; /* Seconds */

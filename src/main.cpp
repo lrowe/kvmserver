@@ -8,7 +8,7 @@ static std::array<std::atomic<uint64_t>, 64> reset_counters;
 
 struct CommandLineArgs
 {
-	unsigned int concurrency = 0;
+	int concurrency = -1;
 	bool ephemeral = false;
 	bool verbose = false;
 	uint16_t warmup_requests = 0;
@@ -32,7 +32,7 @@ static void print_usage(const char* program_name)
 	fprintf(stderr, "Options:\n");
 	fprintf(stderr, "  -p, --program <file>     Program\n");
 	fprintf(stderr, "  -c, --config <file>      Configuration file\n");
-	fprintf(stderr, "  -t, --threads <num>      Number of request VMs\n");
+	fprintf(stderr, "  -t, --threads <num>      Number of request VMs (default: 1)\n");
 	fprintf(stderr, "  -e, --ephemeral          Use ephemeral VMs\n");
 	fprintf(stderr, "  -w, --warmup <num>       Number of warmup requests (default: 0)\n");
 	fprintf(stderr, "  -v, --verbose            Enable verbose output\n");
@@ -53,7 +53,7 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 				args.config_file = optarg;
 				break;
 			case 't':
-				args.concurrency = static_cast<unsigned int>(std::stoul(optarg));
+				args.concurrency = static_cast<int>(std::stoul(optarg));
 				break;
 			case 'e':
 				args.ephemeral = true;
@@ -84,7 +84,7 @@ int main(int argc, char* argv[])
 		// Load the configuration file
 		Configuration config = Configuration::FromJsonFile(args.config_file);
 		// Anything set on the command-line will override the config file
-		if (args.concurrency > 0) {
+		if (args.concurrency >= 0) {
 			config.concurrency = args.concurrency;
 		}
 		if (args.ephemeral) {
