@@ -13,9 +13,11 @@ struct CommandLineArgs
 	bool verbose = false;
 	uint16_t warmup_requests = 0;
 	std::string config_file;
+	std::string filename;
 	std::vector<std::string> remaining_args;
 };
 static const struct option longopts[] = {
+	{"program", required_argument, nullptr, 'p'},
 	{"config", required_argument, nullptr, 'c'},
 	{"threads", required_argument, nullptr, 't'},
 	{"ephemeral", no_argument, nullptr, 'e'},
@@ -26,22 +28,27 @@ static const struct option longopts[] = {
 
 static void print_usage(const char* program_name)
 {
-	fprintf(stderr, "Usage: %s -c <config.json> [options] [<args>]\n", program_name);
+	fprintf(stderr, "Usage: %s [options] [<args>]\n", program_name);
 	fprintf(stderr, "Options:\n");
+	fprintf(stderr, "  -p, --program <file>     Program\n");
 	fprintf(stderr, "  -c, --config <file>      Configuration file\n");
 	fprintf(stderr, "  -t, --threads <num>      Number of request VMs\n");
 	fprintf(stderr, "  -e, --ephemeral          Use ephemeral VMs\n");
 	fprintf(stderr, "  -w, --warmup <num>       Number of warmup requests (default: 0)\n");
 	fprintf(stderr, "  -v, --verbose            Enable verbose output\n");
-	fprintf(stderr, "A configuration file is required in order to be able to host a program.\n");
+	fprintf(stderr, "A program or configuration file is required in order to be able to host a program.\n");
 }
 
 static CommandLineArgs parse_command_line(int argc, char* argv[])
 {
 	CommandLineArgs args;
 	int opt;
-	while ((opt = getopt_long(argc, argv, "c:t:ew:v", longopts, nullptr)) != -1) {
+	while ((opt = getopt_long(argc, argv, "p:c:t:ew:v", longopts, nullptr)) != -1) {
 		switch (opt) {
+			case 'p':
+				// TODO: lookup program filemame on PATH
+				args.filename = optarg;
+				break;
 			case 'c':
 				args.config_file = optarg;
 				break;
@@ -61,12 +68,6 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 				print_usage(argv[0]);
 				exit(EXIT_FAILURE);
 		}
-	}
-	// Check if a configuration file was provided
-	if (args.config_file.empty()) {
-		fprintf(stderr, "Error: Configuration file is required\n");
-		print_usage(argv[0]);
-		exit(EXIT_FAILURE);
 	}
 	// Remaining arguments are stored in args.remaining_args
 	for (int i = optind; i < argc; ++i) {
@@ -91,6 +92,14 @@ int main(int argc, char* argv[])
 		}
 		if (args.warmup_requests > 0) {
 			config.warmup_requests = args.warmup_requests;
+		}
+		if (config.filename.empty()) {
+			if (args.filename.empty()) {
+				fprintf(stderr, "Error: Program filename is required\n");
+				print_usage(argv[0]);
+				exit(EXIT_FAILURE);
+			}
+			config.filename = args.filename;
 		}
 		for (const auto& arg : args.remaining_args) {
 			config.main_arguments.push_back(arg);

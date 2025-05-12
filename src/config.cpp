@@ -99,12 +99,8 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		if (config.concurrency == 0) {
 			config.concurrency = std::thread::hardware_concurrency();
 		}
-		// The filename is required
-		if (!json.contains("filename")) {
-			fprintf(stderr, "Missing required field 'filename' in configuration file: %s\n", filename.c_str());
-			throw std::runtime_error("Missing required field 'filename' in configuration file: " + filename);
-		}
-		config.filename = json["filename"].get<std::string>();
+		// The program filename may be specified on command line
+		config.filename = json.value("filename", config.filename);
 		config.filename = apply_dollar_vars(config.filename);
 
 		/* Most of these fields are optional. */
