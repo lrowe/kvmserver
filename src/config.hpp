@@ -22,7 +22,7 @@ struct Configuration
 	uint32_t heap_address_hint = 0; /* Address hint for the heap */
 	uint64_t hugepage_arena_size = 0; /* Megabytes */
 	uint64_t hugepage_requests_arena = 0; /* Megabytes */
-	bool     executable_heap = false;
+	bool     executable_heap = true;
 	bool     clock_gettime_uses_rdtsc = true;
 	bool     hugepages    = false;
 	bool     split_hugepages = true;
