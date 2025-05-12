@@ -31,7 +31,7 @@ static void print_usage(const char* program_name)
 	fprintf(stderr, "  -c, --config <file>      Configuration file\n");
 	fprintf(stderr, "  -t, --threads <num>      Number of request VMs\n");
 	fprintf(stderr, "  -e, --ephemeral          Use ephemeral VMs\n");
-	fprintf(stderr, "  -w, --warmup <num>       Number of warmup requests (default: 250)\n");
+	fprintf(stderr, "  -w, --warmup <num>       Number of warmup requests (default: 0)\n");
 	fprintf(stderr, "  -v, --verbose            Enable verbose output\n");
 	fprintf(stderr, "A configuration file is required in order to be able to host a program.\n");
 }
