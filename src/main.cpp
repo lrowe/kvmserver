@@ -130,6 +130,7 @@ int main(int argc, char* argv[], char* envp[])
 			}
 			config.filename = args.filename;
 		}
+		// TODO: Should arguments be appended or replaced?
 		for (const auto& arg : args.remaining_args) {
 			config.main_arguments.push_back(arg);
 		}
