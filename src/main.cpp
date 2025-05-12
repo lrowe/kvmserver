@@ -17,7 +17,7 @@ struct CommandLineArgs
 };
 static const struct option longopts[] = {
 	{"config", required_argument, nullptr, 'c'},
-	{"concurrency", required_argument, nullptr, 'C'},
+	{"threads", required_argument, nullptr, 't'},
 	{"ephemeral", no_argument, nullptr, 'e'},
 	{"warmup", required_argument, nullptr, 'w'},
 	{"verbose", no_argument, nullptr, 'v'},
