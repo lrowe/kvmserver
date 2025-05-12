@@ -77,20 +77,25 @@ void add_remappings(const nlohmann::json& json, std::vector<T>& remappings,
 Configuration Configuration::FromJsonFile(const std::string& filename)
 {
 	Configuration config;
-	// Load the JSON file and parse it
-	std::ifstream file(filename);
-	if (!file.is_open()) {
-		throw std::runtime_error("Could not open configuration file: " + filename);
-	}
-
 	nlohmann::json json;
-	// Allow comments in the JSON file
-	try {
-		json = json.parse(file, nullptr, false, true);
-	} catch (const nlohmann::json::parse_error& e) {
-		fprintf(stderr, "Error parsing JSON file: %s\n", filename.c_str());
-		fprintf(stderr, "Error: %s\n", e.what());
-		throw std::runtime_error("Invalid JSON format in configuration file: " + filename);
+
+	if (!filename.empty()) {
+		// Load the JSON file and parse it
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			throw std::runtime_error("Could not open configuration file: " + filename);
+		}
+
+		// Allow comments in the JSON file
+		try {
+			json = json.parse(file, nullptr, false, true);
+		} catch (const nlohmann::json::parse_error& e) {
+			fprintf(stderr, "Error parsing JSON file: %s\n", filename.c_str());
+			fprintf(stderr, "Error: %s\n", e.what());
+			throw std::runtime_error("Invalid JSON format in configuration file: " + filename);
+		}
+	} else {
+		json = nlohmann::json::object();
 	}
 
 	// Parse the JSON data into the Configuration object
