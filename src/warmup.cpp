@@ -10,6 +10,7 @@
 // The warmup thread hosts a simple HTTP server that is able to
 // send minimalistic requests intended to warm up a JIT compiler.
 static std::thread       warmup_thread;
+static bool              warmup_thread_stop_please = false;
 
 void VirtualMachine::warmup()
 {
@@ -98,7 +99,7 @@ bool VirtualMachine::connect_and_send_request(const std::string& address, uint16
 		return false;
 	}
 
-	int intra_connect_requests = 100;
+	int intra_connect_requests = config().warmup_intra_connect_requests;
 	for (int i = 0; i < intra_connect_requests; ++i)
 	{
 		std::string request = "GET " + config().warmup_path + " HTTP/1.1\r\nHost: " + address + ":" + std::to_string(port) + "\r\n\r\n";
@@ -114,9 +115,6 @@ bool VirtualMachine::connect_and_send_request(const std::string& address, uint16
 	}
 
 	close(sockfd);
-	if (config().verbose) {
-		fprintf(stderr, "Warmup: Finished sending requests\n");
-	}
 	return true;
 }
 
@@ -143,12 +141,19 @@ void VirtualMachine::begin_warmup_client()
 				fprintf(stderr, "Warmup: Failed to send request %d\n", i);
 				break;
 			}
+			if (warmup_thread_stop_please) {
+				break;
+			}
+		}
+		if (config().verbose) {
+			fprintf(stderr, "Warmup: Finished sending requests\n");
 		}
 	});
 }
 
 void VirtualMachine::stop_warmup_client()
 {
+	warmup_thread_stop_please = true;
 	if (warmup_thread.joinable()) {
 		warmup_thread.join();
 	}
