@@ -13,8 +13,9 @@ struct Configuration
 
 	float    max_boot_time = 20.0f; /* Seconds */
 	float    max_req_time  = 8.0f; /* Seconds */
-	uint64_t max_address_space = 0; /* Megabytes */
-	uint64_t max_main_memory = 1024; /* Megabytes */
+	// TODO: tinykvm option for unlimited by default
+	uint64_t max_address_space = 128 * 1024; /* Megabytes */
+	uint64_t max_main_memory = 8 * 1024; /* Megabytes */
 	uint32_t max_req_mem   = 128; /* Megabytes of memory for request VMs */
 	uint32_t limit_req_mem = 128; /* Megabytes to keep after request */
 	uint32_t shared_memory = 0; /* Megabytes */
