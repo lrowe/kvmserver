@@ -10,7 +10,6 @@
 		"DENO_NO_UPDATE_CHECK=1"
 	],
 	"executable_heap": true,
-	"current_working_directory": "$PWD/deno",
 	"allowed_paths": [
 		"/dev/urandom",
 		"/etc/resolv.conf",

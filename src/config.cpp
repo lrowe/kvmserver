@@ -202,11 +202,20 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 			}
 		}
 
-		// TODO: needs config option.
+		// Resolve the current working directory
 		char cwd[PATH_MAX];
 		if (getcwd(cwd, sizeof(cwd)) != nullptr) {
 			config.current_working_directory = cwd;
 		}
+		config.current_working_directory = json.value("current_working_directory", config.current_working_directory);
+		config.current_working_directory = apply_dollar_vars(config.current_working_directory);
+
+		// Warmup requests
+		config.warmup_connect_requests = json.value("warmup_connect_requests", config.warmup_connect_requests);
+		config.warmup_intra_connect_requests = json.value("warmup_intra_connect_requests", config.warmup_intra_connect_requests);
+		config.warmup_port = json.value("warmup_port", config.warmup_port);
+		config.warmup_address = json.value("warmup_address", config.warmup_address);
+		config.warmup_path = json.value("warmup_path", config.warmup_path); // HTTP path
 
 		// Raise the memory sizes into megabytes
 		config.max_address_space = config.max_address_space * (1ULL << 20);

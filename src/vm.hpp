@@ -38,6 +38,10 @@ struct VirtualMachine
 	static void init_kvm();
 
 private:
+	void begin_warmup_client();
+	void stop_warmup_client();
+	bool connect_and_send_request(const std::string& address, uint16_t port);
+
 	tinykvm::Machine m_machine;
 	const Configuration& m_config;
 	const std::vector<uint8_t>& m_original_binary;

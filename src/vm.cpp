@@ -331,47 +331,6 @@ void VirtualMachine::init_kvm()
 	tinykvm::Machine::init();
 }
 
-void VirtualMachine::warmup()
-{
-	// No need to warm up the JIT compiler if we are not using ephemeral VMs
-	if (config().warmup_requests == 0) {
-		return;
-	}
-	printf("Warming up the guest VM (%u requests)...\n", config().warmup_requests);
-	this->set_waiting_for_requests(false);
-	// Waiting for a certain amount of requests in order
-	// to warm up the JIT compiler in the VM
-	int freed_fds = 0;
-	auto old_listening_fd = this->m_tracked_client_fd;
-	this->m_tracked_client_fd = -1;
-	machine().fds().free_fd_callback =
-	[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
-		freed_fds++;
-		return false; // Nothing happened
-	};
-	machine().fds().epoll_wait_callback =
-	[&](int vfd, int epfd, int timeout) {
-		if (freed_fds >= config().warmup_requests) {
-			fprintf(stderr, "Warmed up the JIT compiler\n");
-			// If the listening socket is found, we are now waiting for
-			// requests, so we can fork a new VM.
-			this->set_waiting_for_requests(true);
-			this->machine().stop();
-			return false; // Don't call epoll_wait
-		}
-		return true; // Call epoll_wait
-	};
-	// Run the VM until it stops
-	machine().run();
-	// Make sure the program is waiting for requests
-	if (!this->is_waiting_for_requests()) {
-		fprintf(stderr, "The program did not wait for requests after warmup\n");
-		throw std::runtime_error("The program did not wait for requests after warmup");
-	}
-	// Restore the listening socket
-	this->m_tracked_client_fd = old_listening_fd;
-}
-
 #include <tinykvm/rsp_client.hpp>
 void VirtualMachine::open_debugger()
 {

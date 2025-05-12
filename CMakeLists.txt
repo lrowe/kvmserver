@@ -8,6 +8,7 @@ add_executable(kvmserver
 	src/main.cpp
 	src/config.cpp
 	src/file.cpp
+	src/warmup.cpp
 	src/vm.cpp
 )
 target_compile_features(kvmserver PUBLIC cxx_std_20)

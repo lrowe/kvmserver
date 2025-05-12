@@ -123,7 +123,7 @@ int main(int argc, char* argv[], char* envp[])
 			config.ephemeral = true;
 		}
 		if (args.warmup_requests > 0) {
-			config.warmup_requests = args.warmup_requests;
+			config.warmup_connect_requests = args.warmup_requests;
 		}
 		if (config.filename.empty()) {
 			if (args.filename.empty()) {
