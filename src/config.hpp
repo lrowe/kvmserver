@@ -35,9 +35,7 @@ struct Configuration
 	bool     verbose_syscalls = false;
 	bool     verbose_pagetable = false;
 
-	std::vector<std::string> environ {
-		"LC_TYPE=C", "LC_ALL=C", "USER=root"
-	};
+	std::vector<std::string> environ;
 	std::vector<std::string> main_arguments;
 
 	std::vector<tinykvm::VirtualRemapping> vmem_remappings;

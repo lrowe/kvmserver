@@ -13,6 +13,7 @@ struct CommandLineArgs
 	bool verbose = false;
 	bool allow_read = false;
 	bool allow_write = false;
+	bool allow_env = false;
 	uint16_t warmup_requests = 0;
 	std::string config_file;
 	std::string filename;
@@ -21,6 +22,7 @@ struct CommandLineArgs
 const int ALLOW_ALL = 0x100;
 const int ALLOW_READ = 0x101;
 const int ALLOW_WRITE = 0x102;
+const int ALLOW_ENV = 0x103;
 static const struct option longopts[] = {
 	{"program", required_argument, nullptr, 'p'},
 	{"config", required_argument, nullptr, 'c'},
@@ -31,6 +33,7 @@ static const struct option longopts[] = {
 	{"allow-all", no_argument, nullptr, ALLOW_ALL},
 	{"allow-read", no_argument, nullptr, ALLOW_READ},
 	{"allow-write", no_argument, nullptr, ALLOW_WRITE},
+	{"allow-env", no_argument, nullptr, ALLOW_ENV},
 	{nullptr, 0, nullptr, 0}
 };
 
@@ -47,6 +50,7 @@ static void print_usage(const char* program_name)
 	fprintf(stderr, "  --allow-all              Allow all access\n");
 	fprintf(stderr, "  --allow-read             Allow filesystem read access\n");
 	fprintf(stderr, "  --allow-write            Allow filesystem write access\n");
+	fprintf(stderr, "  --allow-env              Allow environment access\n");
 	fprintf(stderr, "A program or configuration file is required in order to be able to host a program.\n");
 }
 
@@ -78,12 +82,16 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 			case ALLOW_ALL:
 				args.allow_read = true;
 				args.allow_write = true;
+				args.allow_env = true;
 				break;
 			case ALLOW_READ:
 				args.allow_read = true;
 				break;
 			case ALLOW_WRITE:
 				args.allow_write = true;
+				break;
+			case ALLOW_ENV:
+				args.allow_env = true;
 				break;
 			default:
 				print_usage(argv[0]);
@@ -98,7 +106,7 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 }
 
 
-int main(int argc, char* argv[])
+int main(int argc, char* argv[], char* envp[])
 {
 	try {
 		CommandLineArgs args = parse_command_line(argc, argv);
@@ -131,6 +139,16 @@ int main(int argc, char* argv[])
 				virtual_path: "/",
 				writable: args.allow_write,
 				prefix: true,
+			});
+		}
+		// TODO: avoid duplicates
+		if (args.allow_env) {
+			for (char** env = envp; *env != nullptr; ++env) {
+				config.environ.push_back(*env);
+			}
+		} else {
+			config.environ.insert(config.environ.end(), {
+				"LC_TYPE=C", "LC_ALL=C", "USER=root"
 			});
 		}
 		// Print some configuration values
