@@ -8,45 +8,67 @@ static std::array<std::atomic<uint64_t>, 64> reset_counters;
 
 struct CommandLineArgs
 {
-	unsigned int concurrency = 0;
+	int concurrency = -1;
 	bool ephemeral = false;
 	bool verbose = false;
+	bool allow_read = false;
+	bool allow_write = false;
+	bool allow_env = false;
 	uint16_t warmup_requests = 0;
 	std::string config_file;
+	std::string filename;
 	std::vector<std::string> remaining_args;
 };
+const int ALLOW_ALL = 0x100;
+const int ALLOW_READ = 0x101;
+const int ALLOW_WRITE = 0x102;
+const int ALLOW_ENV = 0x103;
 static const struct option longopts[] = {
+	{"program", required_argument, nullptr, 'p'},
 	{"config", required_argument, nullptr, 'c'},
-	{"concurrency", required_argument, nullptr, 'C'},
+	{"threads", required_argument, nullptr, 't'},
 	{"ephemeral", no_argument, nullptr, 'e'},
 	{"warmup", required_argument, nullptr, 'w'},
 	{"verbose", no_argument, nullptr, 'v'},
+	{"allow-all", no_argument, nullptr, ALLOW_ALL},
+	{"allow-read", no_argument, nullptr, ALLOW_READ},
+	{"allow-write", no_argument, nullptr, ALLOW_WRITE},
+	{"allow-env", no_argument, nullptr, ALLOW_ENV},
 	{nullptr, 0, nullptr, 0}
 };
 
 static void print_usage(const char* program_name)
 {
-	fprintf(stderr, "Usage: %s -c <config.json> [options] [<args>]\n", program_name);
+	fprintf(stderr, "Usage: %s [options] [<args>]\n", program_name);
 	fprintf(stderr, "Options:\n");
+	fprintf(stderr, "  -p, --program <file>     Program\n");
 	fprintf(stderr, "  -c, --config <file>      Configuration file\n");
-	fprintf(stderr, "  -t, --threads <num>      Number of request VMs\n");
+	fprintf(stderr, "  -t, --threads <num>      Number of request VMs (default: 1)\n");
 	fprintf(stderr, "  -e, --ephemeral          Use ephemeral VMs\n");
-	fprintf(stderr, "  -w, --warmup <num>       Number of warmup requests (default: 250)\n");
+	fprintf(stderr, "  -w, --warmup <num>       Number of warmup requests (default: 0)\n");
 	fprintf(stderr, "  -v, --verbose            Enable verbose output\n");
-	fprintf(stderr, "A configuration file is required in order to be able to host a program.\n");
+	fprintf(stderr, "  --allow-all              Allow all access\n");
+	fprintf(stderr, "  --allow-read             Allow filesystem read access\n");
+	fprintf(stderr, "  --allow-write            Allow filesystem write access\n");
+	fprintf(stderr, "  --allow-env              Allow environment access\n");
+	fprintf(stderr, "A program or configuration file is required in order to be able to host a program.\n");
 }
 
 static CommandLineArgs parse_command_line(int argc, char* argv[])
 {
 	CommandLineArgs args;
 	int opt;
-	while ((opt = getopt_long(argc, argv, "c:t:ew:v", longopts, nullptr)) != -1) {
+	while ((opt = getopt_long(argc, argv, "p:c:t:ew:v", longopts, nullptr)) != -1) {
 		switch (opt) {
+			case 'p':
+				// TODO: lookup program filemame on PATH
+				args.filename = optarg;
+				break;
 			case 'c':
 				args.config_file = optarg;
 				break;
 			case 't':
-				args.concurrency = static_cast<unsigned int>(std::stoul(optarg));
+				args.concurrency = static_cast<int>(std::stoul(optarg));
 				break;
 			case 'e':
 				args.ephemeral = true;
@@ -57,16 +79,24 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 			case 'v':
 				args.verbose = true;
 				break;
+			case ALLOW_ALL:
+				args.allow_read = true;
+				args.allow_write = true;
+				args.allow_env = true;
+				break;
+			case ALLOW_READ:
+				args.allow_read = true;
+				break;
+			case ALLOW_WRITE:
+				args.allow_write = true;
+				break;
+			case ALLOW_ENV:
+				args.allow_env = true;
+				break;
 			default:
 				print_usage(argv[0]);
 				exit(EXIT_FAILURE);
 		}
-	}
-	// Check if a configuration file was provided
-	if (args.config_file.empty()) {
-		fprintf(stderr, "Error: Configuration file is required\n");
-		print_usage(argv[0]);
-		exit(EXIT_FAILURE);
 	}
 	// Remaining arguments are stored in args.remaining_args
 	for (int i = optind; i < argc; ++i) {
@@ -76,15 +106,18 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 }
 
 
-int main(int argc, char* argv[])
+int main(int argc, char* argv[], char* envp[])
 {
 	try {
 		CommandLineArgs args = parse_command_line(argc, argv);
 		// Load the configuration file
 		Configuration config = Configuration::FromJsonFile(args.config_file);
 		// Anything set on the command-line will override the config file
-		if (args.concurrency > 0) {
+		if (args.concurrency >= 0) {
 			config.concurrency = args.concurrency;
+		}
+		if (config.concurrency == 0) {
+			config.concurrency = std::thread::hardware_concurrency();
 		}
 		if (args.ephemeral) {
 			config.ephemeral = true;
@@ -92,8 +125,40 @@ int main(int argc, char* argv[])
 		if (args.warmup_requests > 0) {
 			config.warmup_requests = args.warmup_requests;
 		}
+		if (config.filename.empty()) {
+			if (args.filename.empty()) {
+				fprintf(stderr, "Error: Program filename is required\n");
+				print_usage(argv[0]);
+				exit(EXIT_FAILURE);
+			}
+			config.filename = args.filename;
+		}
+		// TODO: Should arguments be appended or replaced?
 		for (const auto& arg : args.remaining_args) {
 			config.main_arguments.push_back(arg);
+		}
+		if (args.allow_read || args.allow_write) {
+			config.allowed_paths.push_back(Configuration::VirtualPath {
+				.real_path = config.filename,
+				.virtual_path = "/proc/self/exe",
+				.symlink = true,
+			});
+			config.allowed_paths.push_back(Configuration::VirtualPath {
+				.real_path = "/",
+				.virtual_path = "/",
+				.writable = args.allow_write,
+				.prefix = true,
+			});
+		}
+		// TODO: avoid duplicates
+		if (args.allow_env) {
+			for (char** env = envp; *env != nullptr; ++env) {
+				config.environ.push_back(*env);
+			}
+		} else {
+			config.environ.insert(config.environ.end(), {
+				"LC_TYPE=C", "LC_ALL=C", "USER=root"
+			});
 		}
 		// Print some configuration values
 		if (args.verbose) {

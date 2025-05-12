@@ -8,13 +8,14 @@
 struct Configuration
 {
 	std::string filename;
-	uint16_t concurrency = 0; /* Request VMs */
-	uint16_t warmup_requests = 250; /* Warmup requests */
+	uint16_t concurrency = 1; /* Request VMs */
+	uint16_t warmup_requests = 0; /* Warmup requests */
 
 	float    max_boot_time = 20.0f; /* Seconds */
 	float    max_req_time  = 8.0f; /* Seconds */
-	uint64_t max_address_space = 0; /* Megabytes */
-	uint64_t max_main_memory = 1024; /* Megabytes */
+	// TODO: tinykvm option for unlimited by default
+	uint64_t max_address_space = 128 * 1024; /* Megabytes */
+	uint64_t max_main_memory = 8 * 1024; /* Megabytes */
 	uint32_t max_req_mem   = 128; /* Megabytes of memory for request VMs */
 	uint32_t limit_req_mem = 128; /* Megabytes to keep after request */
 	uint32_t shared_memory = 0; /* Megabytes */
@@ -22,21 +23,19 @@ struct Configuration
 	uint32_t heap_address_hint = 0; /* Address hint for the heap */
 	uint64_t hugepage_arena_size = 0; /* Megabytes */
 	uint64_t hugepage_requests_arena = 0; /* Megabytes */
-	bool     executable_heap = false;
+	bool     executable_heap = true;
 	bool     clock_gettime_uses_rdtsc = true;
 	bool     hugepages    = false;
 	bool     split_hugepages = true;
 	bool     transparent_hugepages = false;
 	bool     relocate_fixed_mmap = true;
-	bool     ephemeral = true;
+	bool     ephemeral = false;
 	bool     ephemeral_keep_working_memory = true;
 	bool     verbose = false;
 	bool     verbose_syscalls = false;
 	bool     verbose_pagetable = false;
 
-	std::vector<std::string> environ {
-		"LC_TYPE=C", "LC_ALL=C", "USER=root"
-	};
+	std::vector<std::string> environ;
 	std::vector<std::string> main_arguments;
 
 	std::vector<tinykvm::VirtualRemapping> vmem_remappings;

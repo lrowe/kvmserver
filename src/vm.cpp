@@ -334,7 +334,7 @@ void VirtualMachine::init_kvm()
 void VirtualMachine::warmup()
 {
 	// No need to warm up the JIT compiler if we are not using ephemeral VMs
-	if (!config().ephemeral) {
+	if (config().warmup_requests == 0) {
 		return;
 	}
 	printf("Warming up the guest VM (%u requests)...\n", config().warmup_requests);

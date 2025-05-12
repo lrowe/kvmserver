@@ -1,12 +1,11 @@
 {
 	"filename": "$HOME/github/deno/target/release/deno",
 	//"filename": "$HOME/.deno/bin/deno",
-	"ephemeral": true,
-	"concurrency": 2,
+	"ephemeral": false,
 	"address_space": 66000,
 	"max_memory": 4400,
 	"environment": [
-		"DENO_V8_FLAGS=--single-threaded,--max-old-space-size=64,--max-semi-space-size=64",
+		"DENO_V8_FLAGS=--single-threaded,--max-old-space-size=256,--max-semi-space-size=256",
 		"DENO_DIR=$HOME/.cache/deno",
 		"DENO_NO_UPDATE_CHECK=1"
 	],

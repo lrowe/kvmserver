@@ -1,7 +1,8 @@
 #include "config.hpp"
 #include <fstream>
+#include <limits.h>
 #include <nlohmann/json.hpp>
-#include <thread>
+#include <unistd.h>
 
 static std::string apply_dollar_vars(std::string str)
 {
@@ -75,34 +76,32 @@ void add_remappings(const nlohmann::json& json, std::vector<T>& remappings,
 Configuration Configuration::FromJsonFile(const std::string& filename)
 {
 	Configuration config;
-	// Load the JSON file and parse it
-	std::ifstream file(filename);
-	if (!file.is_open()) {
-		throw std::runtime_error("Could not open configuration file: " + filename);
-	}
-
 	nlohmann::json json;
-	// Allow comments in the JSON file
-	try {
-		json = json.parse(file, nullptr, false, true);
-	} catch (const nlohmann::json::parse_error& e) {
-		fprintf(stderr, "Error parsing JSON file: %s\n", filename.c_str());
-		fprintf(stderr, "Error: %s\n", e.what());
-		throw std::runtime_error("Invalid JSON format in configuration file: " + filename);
+
+	if (!filename.empty()) {
+		// Load the JSON file and parse it
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			throw std::runtime_error("Could not open configuration file: " + filename);
+		}
+
+		// Allow comments in the JSON file
+		try {
+			json = json.parse(file, nullptr, false, true);
+		} catch (const nlohmann::json::parse_error& e) {
+			fprintf(stderr, "Error parsing JSON file: %s\n", filename.c_str());
+			fprintf(stderr, "Error: %s\n", e.what());
+			throw std::runtime_error("Invalid JSON format in configuration file: " + filename);
+		}
+	} else {
+		json = nlohmann::json::object();
 	}
 
 	// Parse the JSON data into the Configuration object
 	try {
 		config.concurrency = json.value("concurrency", config.concurrency);
-		if (config.concurrency == 0) {
-			config.concurrency = std::thread::hardware_concurrency();
-		}
-		// The filename is required
-		if (!json.contains("filename")) {
-			fprintf(stderr, "Missing required field 'filename' in configuration file: %s\n", filename.c_str());
-			throw std::runtime_error("Missing required field 'filename' in configuration file: " + filename);
-		}
-		config.filename = json["filename"].get<std::string>();
+		// The program filename may be specified on command line
+		config.filename = json.value("filename", config.filename);
 		config.filename = apply_dollar_vars(config.filename);
 
 		/* Most of these fields are optional. */
@@ -201,6 +200,12 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 				vpath.prefix = path.value("prefix", false);
 				config.allowed_paths.push_back(vpath);
 			}
+		}
+
+		// TODO: needs config option.
+		char cwd[PATH_MAX];
+		if (getcwd(cwd, sizeof(cwd)) != nullptr) {
+			config.current_working_directory = cwd;
 		}
 
 		// Raise the memory sizes into megabytes
