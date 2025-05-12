@@ -100,21 +100,6 @@ VirtualMachine::VirtualMachine(const std::vector<uint8_t>& binary, const Configu
 		}
 		return false;
 	});
-	machine().fds().listening_socket_callback =
-	[&](int vfd, int fd) {
-		this->m_tracked_client_fd = fd;
-	};
-	machine().fds().epoll_wait_callback =
-	[&](int vfd, int epfd, int timeout) {
-		if (this->m_tracked_client_fd != -1) {
-			// If the listening socket is found, we are now waiting for
-			// requests, so we can fork a new VM.
-			this->set_waiting_for_requests(true);
-			this->machine().stop();
-			return false; // Don't call epoll_wait
-		}
-		return true; // Call epoll_wait
-	};
 }
 VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	: m_machine(other.m_machine, tinykvm::MachineOptions{
@@ -128,6 +113,7 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	  m_config(other.m_config),
 	  m_original_binary(other.m_original_binary),
 	  m_binary_type(other.m_binary_type),
+	  m_reqid(reqid),
 	  m_ephemeral(m_config.ephemeral),
 	  m_master_instance(&other)
 {
@@ -168,23 +154,23 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	if (config().ephemeral)
 	{
 		machine().fds().accept_socket_callback =
-		[&, reqid](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
+		[&](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
 			if (m_tracked_client_fd != -1) {
-				fprintf(stderr, "Forked VM %u already has a connection on fd %d\n", reqid, m_tracked_client_fd);
+				fprintf(stderr, "Forked VM %u already has a connection on fd %d\n", m_reqid, m_tracked_client_fd);
 				return -EAGAIN;
 			}
 			m_tracked_client_fd = machine().fds().manage(fd, true, true);
 			if (config().verbose) {
-				printf("Forked VM %u accepted connection on fd %d\n", reqid, m_tracked_client_fd);
+				printf("Forked VM %u accepted connection on fd %d\n", m_reqid, m_tracked_client_fd);
 			}
 			machine().fds().set_accepting_connections(false);
 			return m_tracked_client_fd;
 		};
 		machine().fds().free_fd_callback =
-		[&, reqid](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
+		[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
 			if (vfd == m_tracked_client_fd) {
 				if (config().verbose) {
-					printf("Forked VM %u closed connection on fd %d. Resetting...\n", reqid, m_tracked_client_fd);
+					printf("Forked VM %u closed connection on fd %d. Resetting...\n", m_reqid, m_tracked_client_fd);
 				}
 				this->reset_to(*m_master_instance);
 				return true; // The VM was reset
@@ -262,6 +248,23 @@ void VirtualMachine::initialize(std::function<void()> warmup_callback)
 		if (config().verbose_pagetable) {
 			machine().print_pagetables();
 		}
+
+		// Wait for a listening socket and then stop in epoll_wait()
+		machine().fds().listening_socket_callback =
+		[this](int vfd, int fd) {
+			this->m_tracked_client_fd = fd;
+		};
+		machine().fds().epoll_wait_callback =
+		[this](int vfd, int epfd, int timeout) {
+			if (this->m_tracked_client_fd != -1) {
+				// If the listening socket is found, we are now waiting for
+				// requests, so we can fork new VMs.
+				this->set_waiting_for_requests(true);
+				this->machine().stop();
+				return false; // Don't call epoll_wait
+			}
+			return true; // Call epoll_wait
+		};
 
 		// Continue/resume or run through main()
 		machine().run( config().max_boot_time );
@@ -344,13 +347,19 @@ void VirtualMachine::warmup()
 	machine().fds().free_fd_callback =
 	[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
 		freed_fds++;
+		return false; // Nothing happened
+	};
+	machine().fds().epoll_wait_callback =
+	[&](int vfd, int epfd, int timeout) {
 		if (freed_fds >= config().warmup_requests) {
 			fprintf(stderr, "Warmed up the JIT compiler\n");
+			// If the listening socket is found, we are now waiting for
+			// requests, so we can fork a new VM.
 			this->set_waiting_for_requests(true);
 			this->machine().stop();
-			return true; // The VM was reset
+			return false; // Don't call epoll_wait
 		}
-		return false; // Nothing happened
+		return true; // Call epoll_wait
 	};
 	// Run the VM until it stops
 	machine().run();

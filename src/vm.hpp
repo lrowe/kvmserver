@@ -42,6 +42,7 @@ private:
 	const Configuration& m_config;
 	const std::vector<uint8_t>& m_original_binary;
 	BinaryType m_binary_type = BinaryType::Static;
+	unsigned m_reqid = 0;
 	bool m_ephemeral = false;
 	bool m_reset_needed = false;
 	bool m_waiting_for_requests = false;
