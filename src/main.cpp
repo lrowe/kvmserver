@@ -11,11 +11,16 @@ struct CommandLineArgs
 	int concurrency = -1;
 	bool ephemeral = false;
 	bool verbose = false;
+	bool allow_read = false;
+	bool allow_write = false;
 	uint16_t warmup_requests = 0;
 	std::string config_file;
 	std::string filename;
 	std::vector<std::string> remaining_args;
 };
+const int ALLOW_ALL = 0x100;
+const int ALLOW_READ = 0x101;
+const int ALLOW_WRITE = 0x102;
 static const struct option longopts[] = {
 	{"program", required_argument, nullptr, 'p'},
 	{"config", required_argument, nullptr, 'c'},
@@ -23,6 +28,9 @@ static const struct option longopts[] = {
 	{"ephemeral", no_argument, nullptr, 'e'},
 	{"warmup", required_argument, nullptr, 'w'},
 	{"verbose", no_argument, nullptr, 'v'},
+	{"allow-all", no_argument, nullptr, ALLOW_ALL},
+	{"allow-read", no_argument, nullptr, ALLOW_READ},
+	{"allow-write", no_argument, nullptr, ALLOW_WRITE},
 	{nullptr, 0, nullptr, 0}
 };
 
@@ -36,6 +44,9 @@ static void print_usage(const char* program_name)
 	fprintf(stderr, "  -e, --ephemeral          Use ephemeral VMs\n");
 	fprintf(stderr, "  -w, --warmup <num>       Number of warmup requests (default: 0)\n");
 	fprintf(stderr, "  -v, --verbose            Enable verbose output\n");
+	fprintf(stderr, "  --allow-all              Allow all access\n");
+	fprintf(stderr, "  --allow-read             Allow filesystem read access\n");
+	fprintf(stderr, "  --allow-write            Allow filesystem write access\n");
 	fprintf(stderr, "A program or configuration file is required in order to be able to host a program.\n");
 }
 
@@ -63,6 +74,16 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 				break;
 			case 'v':
 				args.verbose = true;
+				break;
+			case ALLOW_ALL:
+				args.allow_read = true;
+				args.allow_write = true;
+				break;
+			case ALLOW_READ:
+				args.allow_read = true;
+				break;
+			case ALLOW_WRITE:
+				args.allow_write = true;
 				break;
 			default:
 				print_usage(argv[0]);
@@ -103,6 +124,14 @@ int main(int argc, char* argv[])
 		}
 		for (const auto& arg : args.remaining_args) {
 			config.main_arguments.push_back(arg);
+		}
+		if (args.allow_read || args.allow_write) {
+			config.allowed_paths.push_back(Configuration::VirtualPath {
+				real_path: "/",
+				virtual_path: "/",
+				writable: args.allow_write,
+				prefix: true,
+			});
 		}
 		// Print some configuration values
 		if (args.verbose) {
