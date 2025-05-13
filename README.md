@@ -67,6 +67,21 @@ Transfer/sec:    146.91MB
 ```
 Deno in TinyKVM has around ~4us in context-switching and safety overhead per request. But has good scaling with forked VMs.
 
+## Per-request isolation
+
+```sh
+$ ./wrk -c1 -t1 http://127.0.0.1:8000 -H "Connection: close"
+Running 10s test @ http://127.0.0.1:8000
+  1 threads and 1 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    60.61us    5.35us 206.00us   83.50%
+    Req/Sec    13.40k   478.54    14.12k    62.38%
+  134615 requests in 10.10s, 22.34MB read
+Requests/sec:  13329.30
+Transfer/sec:      2.21MB
+```
+There is natural overhead in establishing a new connection for each request, but that's a necessary part of proper request isolation. After each request the VM is completely reset, ready to go again. This benchmark is running an unmodified Deno stable binary with no special code or FFI. :)
+
 ## React benchmark
 
 Rendering a React page we get:

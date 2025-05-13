@@ -114,7 +114,7 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	  m_original_binary(other.m_original_binary),
 	  m_binary_type(other.m_binary_type),
 	  m_reqid(reqid),
-	  m_ephemeral(m_config.ephemeral),
+	  m_ephemeral(other.m_ephemeral),
 	  m_master_instance(&other)
 {
 	machine().set_userdata<VirtualMachine> (this);
@@ -151,7 +151,7 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	// When a VM is ephemeral we try to detect when a client
 	// disconnects, so we can reset the VM and accept a new connection
 	// with a clean slate.
-	if (config().ephemeral)
+	if (this->m_ephemeral)
 	{
 		machine().fds().accept_socket_callback =
 		[&](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
@@ -279,7 +279,8 @@ void VirtualMachine::initialize(std::function<void()> warmup_callback, bool just
 			warmup_callback();
 		}
 
-		if (just_one_vm) {
+		if (just_one_vm)
+		{
 			// Don't turn the VM into a forkable master VM
 			machine().fds().set_preempt_epoll_wait(false);
 			machine().fds().free_fd_callback =
@@ -291,6 +292,27 @@ void VirtualMachine::initialize(std::function<void()> warmup_callback, bool just
 				return true; // Call epoll_wait
 			};
 			return;
+		}
+		else
+		{
+			machine().fds().free_fd_callback =
+			[](int, tinykvm::FileDescriptors::Entry&) -> bool {
+				return false; // Nothing happened
+			};
+			machine().fds().epoll_wait_callback =
+			[this](int vfd, int epfd, int timeout) {
+				this->set_waiting_for_requests(true);
+				this->machine().stop();
+				return false; // Don't call epoll_wait
+			};
+
+			this->m_waiting_for_requests = false;
+			machine().run( 1.0f );
+
+			// Make sure the program is waiting for requests
+			if (!is_waiting_for_requests()) {
+				throw std::runtime_error("Program did not wait for requests");
+			}
 		}
 
 		// The VM is currently paused in kernel mode in a system call handler
@@ -320,6 +342,23 @@ void VirtualMachine::initialize(std::function<void()> warmup_callback, bool just
 		fprintf(stderr,
 			"Error: %s\n", e.what());
 		throw; /* IMPORTANT: Re-throw */
+	}
+}
+
+void VirtualMachine::resume_fork()
+{
+	if (this->m_ephemeral)
+	{
+		// The VM is ephemeral, so it should be residing in a system call handler now
+		// In order to be fast, we will directly re-do the system call, and then
+		// resume the VM.
+		machine().system_call(machine().cpu(), SYS_epoll_wait);
+
+		machine().vmresume();
+	}
+	else
+	{
+		machine().vmresume();
 	}
 }
 

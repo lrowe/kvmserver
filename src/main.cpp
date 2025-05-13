@@ -238,7 +238,6 @@ int main(int argc, char* argv[], char* envp[])
 		// Start VM forks
 		std::vector<std::thread> threads;
 		threads.reserve(config.concurrency);
-		printf("Starting up %u threads...\n", config.concurrency);
 
 		for (unsigned int i = 0; i < config.concurrency; ++i)
 		{
@@ -266,7 +265,7 @@ int main(int argc, char* argv[], char* envp[])
 				while (true) {
 					bool failure = false;
 					try {
-						forked_vm.machine().vmresume();
+						forked_vm.resume_fork();
 					} catch (const tinykvm::MachineTimeoutException& me) {
 						fprintf(stderr, "*** Forked VM %u timed out\n", i);
 						fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
