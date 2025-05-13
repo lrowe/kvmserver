@@ -203,7 +203,7 @@ void VirtualMachine::reset_to(const VirtualMachine& other)
 	machine().fds().set_accepting_connections(true);
 }
 
-void VirtualMachine::initialize(std::function<void()> warmup_callback)
+void VirtualMachine::initialize(std::function<void()> warmup_callback, bool just_one_vm)
 {
 	try {
 		const auto stack = machine().mmap_allocate(settings::MAIN_STACK_SIZE);
@@ -277,6 +277,20 @@ void VirtualMachine::initialize(std::function<void()> warmup_callback)
 		// If a warmup callback is provided, call it
 		if (warmup_callback) {
 			warmup_callback();
+		}
+
+		if (just_one_vm) {
+			// Don't turn the VM into a forkable master VM
+			machine().fds().set_preempt_epoll_wait(false);
+			machine().fds().free_fd_callback =
+			[](int, tinykvm::FileDescriptors::Entry&) -> bool {
+				return false; // Nothing happened
+			};
+			machine().fds().epoll_wait_callback =
+			[](int, int, int) {
+				return true; // Call epoll_wait
+			};
+			return;
 		}
 
 		// The VM is currently paused in kernel mode in a system call handler

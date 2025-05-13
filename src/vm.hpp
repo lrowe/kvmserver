@@ -33,7 +33,7 @@ struct VirtualMachine
 	VirtualMachine(const std::vector<uint8_t>& binary, const Configuration& config);
 	VirtualMachine(const VirtualMachine& other, unsigned reqid);
 	~VirtualMachine();
-	void initialize(std::function<void()> = nullptr);
+	void initialize(std::function<void()> warmup, bool just_one_vm);
 	void reset_to(const VirtualMachine&);
 	static void init_kvm();
 

@@ -34,7 +34,9 @@ void VirtualMachine::warmup()
 	machine().fds().epoll_wait_callback =
 	[&](int vfd, int epfd, int timeout) {
 		if (freed_fds >= config().warmup_connect_requests) {
-			fprintf(stderr, "Warmed up the JIT compiler\n");
+			if (config().verbose) {
+				fprintf(stderr, "Warmed up the JIT compiler\n");
+			}
 			// If the listening socket is found, we are now waiting for
 			// requests, so we can fork a new VM.
 			this->set_waiting_for_requests(true);

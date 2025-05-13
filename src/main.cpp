@@ -191,11 +191,48 @@ int main(int argc, char* argv[], char* envp[])
 		VirtualMachine vm(binary, config);
 		// Initialize the VM by running through main()
 		// and then do a warmup, if required
-		vm.initialize(std::bind(&VirtualMachine::warmup, &vm));
+		const bool just_one_vm = (config.concurrency == 1 && !config.ephemeral);
+		vm.initialize(std::bind(&VirtualMachine::warmup, &vm), just_one_vm);
 		// Check if the VM is (likely) waiting for requests
 		if (!vm.is_waiting_for_requests()) {
 			fprintf(stderr, "The program did not wait for requests\n");
 			return 1;
+		}
+
+		// Print informational message
+		printf("Program '%s' loaded. vm=%u%s huge=%u/%u\n",
+			config.filename.c_str(),
+			config.concurrency,
+			(config.ephemeral ? (config.ephemeral_keep_working_memory ? " ephemeral-kwm" : " ephemeral") : ""),
+			config.hugepage_arena_size > 0,
+			config.hugepage_requests_arena > 0);
+
+		// Non-ephemeral single-threaded - we already have a VM
+		if (just_one_vm)
+		{
+			while (true)
+			{
+				bool failure = false;
+				try {
+					vm.machine().run();
+				} catch (const tinykvm::MachineTimeoutException& me) {
+					fprintf(stderr, "*** Main VM timed out\n");
+					fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
+					failure = true;
+				} catch (const tinykvm::MachineException& me) {
+					fprintf(stderr, "*** Main VM Error: %s Data: 0x%#lX\n",
+						me.what(), me.data());
+					failure = true;
+				} catch (const std::exception& e) {
+					fprintf(stderr, "*** Main VM Error: %s\n", e.what());
+					failure = true;
+				}
+				if (failure) {
+					if (getenv("DEBUG") != nullptr) {
+						vm.open_debugger();
+					}
+				}
+			}
 		}
 
 		// Start VM forks

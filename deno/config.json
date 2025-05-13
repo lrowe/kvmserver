@@ -4,8 +4,9 @@
 	"ephemeral": false,
 	"address_space": 66000,
 	"max_memory": 4400,
+	"hugepage_arena_size": 64,
 	"environment": [
-		"DENO_V8_FLAGS=--single-threaded,--max-old-space-size=256,--max-semi-space-size=256",
+		"DENO_V8_FLAGS=--single-threaded,--single-threaded-gc,--max-old-space-size=256,--max-semi-space-size=256",
 		"DENO_DIR=$HOME/.cache/deno",
 		"DENO_NO_UPDATE_CHECK=1"
 	],
