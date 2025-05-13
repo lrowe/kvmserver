@@ -11,9 +11,10 @@
 #include <unistd.h>
 // The warmup thread hosts a simple HTTP server that is able to
 // send minimalistic requests intended to warm up a JIT compiler.
-static constexpr int NUM_WARMUP_THREADS = 8;
+static constexpr int NUM_WARMUP_THREADS = 4;
 static std::vector<std::thread> warmup_threads;
-static bool              warmup_thread_stop_please = false;
+static std::atomic<int> warmup_thread_completed = 0;
+static bool warmup_thread_stop_please = false;
 
 void VirtualMachine::warmup()
 {
@@ -35,7 +36,7 @@ void VirtualMachine::warmup()
 	};
 	machine().fds().epoll_wait_callback =
 	[&](int vfd, int epfd, int timeout) {
-		if (freed_fds >= config().warmup_connect_requests) {
+		if (freed_fds >= NUM_WARMUP_THREADS * config().warmup_connect_requests) {
 			if (config().verbose) {
 				fprintf(stderr, "Warmed up the JIT compiler\n");
 			}
@@ -130,11 +131,24 @@ bool VirtualMachine::connect_and_send_request(const std::string& address, uint16
 			fprintf(stderr, "Warmup: Failed to receive data: %s\n", strerror(errno));
 			break;
 		} else if (bytes == 0) {
-			break;
+			break; // Connection closed
+		}
+		while (bytes > 0) {
+			bytes = recv(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL | MSG_DONTWAIT);
+			if (bytes < 0) {
+				if (errno == EAGAIN || errno == EWOULDBLOCK) {
+					break; // No more data
+				}
+				fprintf(stderr, "Warmup: Failed to receive data: %s\n", strerror(errno));
+				break;
+			} else if (bytes == 0) {
+				break; // Connection closed
+			}
 		}
 	}
 
 	close(sockfd);
+	warmup_thread_completed++;
 	return true;
 }
 
@@ -153,30 +167,32 @@ void VirtualMachine::begin_warmup_client()
 		}
 	}
 	warmup_threads.reserve(NUM_WARMUP_THREADS);
-	warmup_threads.push_back(std::thread([this]()
-	{
-		if (config().warmup_address.find("unix:") == 0) {
-			printf("Warmup: Starting warmup client at %s, requests %u\n",
-				config().warmup_address.c_str(), config().warmup_connect_requests);
-		} else {
-			printf("Warmup: Starting warmup client at %s:%u, requests %u\n",
-				config().warmup_address.c_str(), config().warmup_port, config().warmup_connect_requests);
-		}
-		// Start a simple HTTP client that will send
-		// a request to the VM in order to warm up the guest program.
-		for (int i = 0; i < config().warmup_connect_requests; ++i) {
-			if (!connect_and_send_request(config().warmup_address, config().warmup_port)) {
-				fprintf(stderr, "Warmup: Failed to send request %d\n", i);
-				break;
+	for (int i = 0; i < NUM_WARMUP_THREADS; ++i) {
+		warmup_threads.emplace_back([this]()
+		{
+			if (config().warmup_address.find("unix:") == 0) {
+				printf("Warmup: Starting warmup client at %s, requests %u\n",
+					config().warmup_address.c_str(), config().warmup_connect_requests);
+			} else {
+				printf("Warmup: Starting warmup client at %s:%u, requests %u\n",
+					config().warmup_address.c_str(), config().warmup_port, config().warmup_connect_requests);
 			}
-			if (warmup_thread_stop_please) {
-				break;
+			// Start a simple HTTP client that will send
+			// a request to the VM in order to warm up the guest program.
+			for (int i = 0; i < config().warmup_connect_requests; ++i) {
+				if (!connect_and_send_request(config().warmup_address, config().warmup_port)) {
+					fprintf(stderr, "Warmup: Failed to send request %d\n", i);
+					break;
+				}
+				if (warmup_thread_stop_please) {
+					break;
+				}
 			}
-		}
-		if (config().verbose) {
-			fprintf(stderr, "Warmup: Finished sending requests\n");
-		}
-	}));
+			if (config().verbose) {
+				fprintf(stderr, "Warmup: Finished sending requests\n");
+			}
+		});
+	}
 }
 
 void VirtualMachine::stop_warmup_client()
