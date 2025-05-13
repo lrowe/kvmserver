@@ -3,6 +3,7 @@
 #include <cstring>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <netinet/in.h>
 #include <stdexcept>
 #include <thread>
@@ -62,22 +63,37 @@ void VirtualMachine::warmup()
 
 bool VirtualMachine::connect_and_send_request(const std::string& address, uint16_t port)
 {
-	int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	const char* UNIX_PREFIX = "unix:";
+	struct sockaddr_storage serv_addr;
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	socklen_t serv_addr_len;
+	if (address.rfind(UNIX_PREFIX, 0) == 0) {
+		struct sockaddr_un* serv_addr_un = reinterpret_cast<struct sockaddr_un*>(&serv_addr);
+		serv_addr_len = sizeof(*serv_addr_un);
+		serv_addr_un->sun_family = AF_UNIX;
+		// sun_path must be nul terminated.
+		if (address.length() - strlen(UNIX_PREFIX) > sizeof(serv_addr_un->sun_path) - 1) {
+			fprintf(stderr, "Warmup: Invalid address (path too long): %s\n", address.c_str());
+			return false;
+		}
+		strncpy(serv_addr_un->sun_path, address.c_str() + strlen(UNIX_PREFIX), sizeof(serv_addr_un->sun_path) - 1);
+	} else {
+		struct sockaddr_in* serv_addr_in = reinterpret_cast<struct sockaddr_in*>(&serv_addr);
+		serv_addr_len = sizeof(*serv_addr_in);
+		serv_addr_in->sin_family = AF_INET;
+		serv_addr_in->sin_port = htons(port);
+		if (inet_pton(AF_INET, address.c_str(), &serv_addr_in->sin_addr) <= 0) {
+			fprintf(stderr, "Warmup: Invalid address: %s\n", address.c_str());
+			return false;
+		}
+	}
+
+	int sockfd = socket(serv_addr.ss_family, SOCK_STREAM, 0);
 	if (sockfd < 0) {
 		fprintf(stderr, "Warmup: Failed to create socket: %s\n", strerror(errno));
 		return false;
 	}
-	struct sockaddr_in serv_addr;
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(port);
-	if (inet_pton(AF_INET, address.c_str(), &serv_addr.sin_addr) <= 0) {
-		fprintf(stderr, "Warmup: Invalid address: %s\n", address.c_str());
-		close(sockfd);
-		return false;
-	}
-
-	if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+	if (connect(sockfd, (struct sockaddr*)&serv_addr, serv_addr_len) < 0) {
 		fprintf(stderr, "Warmup: Connection failed: %s\n", strerror(errno));
 		close(sockfd);
 		return false;
@@ -102,7 +118,7 @@ bool VirtualMachine::connect_and_send_request(const std::string& address, uint16
 	int intra_connect_requests = config().warmup_intra_connect_requests;
 	for (int i = 0; i < intra_connect_requests; ++i)
 	{
-		std::string request = "GET " + config().warmup_path + " HTTP/1.1\r\nHost: " + address + ":" + std::to_string(port) + "\r\n\r\n";
+		std::string request = "GET " + config().warmup_path + " HTTP/1.1\r\nHost: localhost\r\n\r\n";
 		if (send(sockfd, request.c_str(), request.size(), 0) < 0) {
 			fprintf(stderr, "Warmup: Failed to send request: %s\n", strerror(errno));
 			break;
