@@ -63,20 +63,20 @@ void VirtualMachine::warmup()
 
 bool VirtualMachine::connect_and_send_request(const std::string& address, uint16_t port)
 {
-	const char* UNIX_PREFIX = "unix:";
+	static const std::string UNIX_PREFIX = "unix:";
 	struct sockaddr_storage serv_addr;
 	memset(&serv_addr, 0, sizeof(serv_addr));
 	socklen_t serv_addr_len;
-	if (address.rfind(UNIX_PREFIX, 0) == 0) {
+	if (address.find(UNIX_PREFIX) == 0) {
 		struct sockaddr_un* serv_addr_un = reinterpret_cast<struct sockaddr_un*>(&serv_addr);
 		serv_addr_len = sizeof(*serv_addr_un);
 		serv_addr_un->sun_family = AF_UNIX;
 		// sun_path must be nul terminated.
-		if (address.length() - strlen(UNIX_PREFIX) > sizeof(serv_addr_un->sun_path) - 1) {
+		if (address.length() - UNIX_PREFIX.size() > sizeof(serv_addr_un->sun_path) - 1) {
 			fprintf(stderr, "Warmup: Invalid address (path too long): %s\n", address.c_str());
 			return false;
 		}
-		strncpy(serv_addr_un->sun_path, address.c_str() + strlen(UNIX_PREFIX), sizeof(serv_addr_un->sun_path) - 1);
+		strncpy(serv_addr_un->sun_path, &address[UNIX_PREFIX.size()], sizeof(serv_addr_un->sun_path) - 1);
 	} else {
 		struct sockaddr_in* serv_addr_in = reinterpret_cast<struct sockaddr_in*>(&serv_addr);
 		serv_addr_len = sizeof(*serv_addr_in);
@@ -148,8 +148,13 @@ void VirtualMachine::begin_warmup_client()
 	}
 	warmup_thread = std::thread([this]()
 	{
-		printf("Warmup: Starting warmup client address %s:%u, requests %u\n",
-			config().warmup_address.c_str(), config().warmup_port, config().warmup_connect_requests);
+		if (config().warmup_address.find("unix:") == 0) {
+			printf("Warmup: Starting warmup client at %s, requests %u\n",
+				config().warmup_address.c_str(), config().warmup_connect_requests);
+		} else {
+			printf("Warmup: Starting warmup client at %s:%u, requests %u\n",
+				config().warmup_address.c_str(), config().warmup_port, config().warmup_connect_requests);
+		}
 		// Start a simple HTTP client that will send
 		// a request to the VM in order to warm up the guest program.
 		for (int i = 0; i < config().warmup_connect_requests; ++i) {
