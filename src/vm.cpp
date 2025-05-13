@@ -301,6 +301,7 @@ void VirtualMachine::initialize(std::function<void()> warmup_callback, bool just
 			};
 			machine().fds().epoll_wait_callback =
 			[this](int vfd, int epfd, int timeout) {
+				printf("epoll_wait_callback: vfd=%d\n", vfd);
 				this->set_waiting_for_requests(true);
 				this->machine().stop();
 				return false; // Don't call epoll_wait

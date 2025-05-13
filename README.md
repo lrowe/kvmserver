@@ -84,26 +84,42 @@ There is natural overhead in establishing a new connection for each request, but
 
 ## React benchmark
 
-Rendering a React page we get:
+Running a React server benchmark we find:
 ```sh
-$ ./wrk -c1 -t1 http://127.0.0.1:8000
+-= TinyKVM w/Deno ephemeral with reset as tail-latency =-
+
+$ ./wrk -c1 -t1 http://127.0.0.1:8000 -H "Connection: close"
 Running 10s test @ http://127.0.0.1:8000
   1 threads and 1 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency   533.24us   22.99us   0.91ms   88.97%
-    Req/Sec     1.88k     9.42     1.90k    68.00%
-  18741 requests in 10.00s, 558.53MB read
-Requests/sec:   1874.07
-Transfer/sec:     55.85MB
+    Latency   592.71us   26.35us   0.93ms   81.31%
+    Req/Sec     1.66k    14.66     1.68k    76.24%
+  16636 requests in 10.10s, 496.09MB read
+Requests/sec:   1647.23
+Transfer/sec:     49.12MB
 
-$ ./wrk -c8 -t8 http://127.0.0.1:8000
+-= TinyKVM w/Deno ephemeral including reset =-
+
+$ ./wrk -c1 -t1 http://127.0.0.1:8000 -H "Connection: close"
 Running 10s test @ http://127.0.0.1:8000
-  8 threads and 8 connections
+  1 threads and 1 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency   589.57us   39.86us   1.26ms   81.93%
-    Req/Sec     1.70k    60.49     1.81k    55.45%
-  136925 requests in 10.10s, 3.99GB read
-Requests/sec:  13556.71
-Transfer/sec:    404.02MB
+    Latency   756.92us   40.21us   3.96ms   99.42%
+    Req/Sec     1.30k     6.52     1.30k    77.23%
+  13036 requests in 10.10s, 388.74MB read
+Requests/sec:   1290.72
+Transfer/sec:     38.49MB
+
+-= Deno run terminal =-
+
+$ ./wrk -c1 -t1 http://127.0.0.1:8000 -H "Connection: close"
+Running 10s test @ http://127.0.0.1:8000
+  1 threads and 1 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   582.90us  511.51us  11.36ms   98.10%
+    Req/Sec     1.83k   181.40     1.93k    94.00%
+  18236 requests in 10.00s, 543.81MB read
+Requests/sec:   1823.58
+Transfer/sec:     54.38MB
 ```
-This scales well over many cores, as can be seen above. Producing 13.5k server-rendered pages per second in a sandbox is quite insane.
+There is only a 10us difference between terminal `deno run` and sandboxed TinyKVM with resets as tail latency.

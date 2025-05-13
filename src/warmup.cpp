@@ -1,5 +1,6 @@
 #include "vm.hpp"
 
+#include <chrono>
 #include <cstring>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -10,8 +11,9 @@
 #include <unistd.h>
 // The warmup thread hosts a simple HTTP server that is able to
 // send minimalistic requests intended to warm up a JIT compiler.
-static std::thread       warmup_thread;
+static std::vector<std::thread> warmup_threads;
 static bool              warmup_thread_stop_please = false;
+static constexpr int     NUM_WARMUP_THREADS = 8;
 
 void VirtualMachine::warmup()
 {
@@ -46,11 +48,14 @@ void VirtualMachine::warmup()
 		return true; // Call epoll_wait
 	};
 
+	// Measure the time it takes to warm up the JIT compiler
+	auto start = std::chrono::high_resolution_clock::now();
+
 	// Start the warmup client
 	this->begin_warmup_client();
 
 	// Run the VM until it stops
-	machine().run();
+	machine().run( config().max_boot_time );
 	// Make sure the program is waiting for requests
 	if (!this->is_waiting_for_requests()) {
 		fprintf(stderr, "The program did not wait for requests after warmup\n");
@@ -61,6 +66,12 @@ void VirtualMachine::warmup()
 
 	// Stop the warmup client
 	this->stop_warmup_client();
+
+	auto end = std::chrono::high_resolution_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+	if (config().verbose) {
+	}
+	fprintf(stderr, "Warmup took %ld ms\n", duration);
 }
 
 bool VirtualMachine::connect_and_send_request(const std::string& address, uint16_t port)
@@ -101,35 +112,16 @@ bool VirtualMachine::connect_and_send_request(const std::string& address, uint16
 		return false;
 	}
 
-	// Set a short send/recv timeout as the server will stop responding after
-	// a certain amount of requests
-	struct timeval timeout;
-	timeout.tv_sec = 1;
-	timeout.tv_usec = 0;
-	if (setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) {
-		fprintf(stderr, "Warmup: Failed to set socket options: %s\n", strerror(errno));
-		close(sockfd);
-		return false;
-	}
-	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) {
-		fprintf(stderr, "Warmup: Failed to set socket options: %s\n", strerror(errno));
-		close(sockfd);
-		return false;
-	}
-
 	int intra_connect_requests = config().warmup_intra_connect_requests;
 	for (int i = 0; i < intra_connect_requests; ++i)
 	{
 		std::string request = "GET " + config().warmup_path + " HTTP/1.1\r\nHost: localhost\r\n\r\n";
-		if (send(sockfd, request.c_str(), request.size(), 0) < 0) {
+		if (send(sockfd, request.c_str(), request.size(), MSG_NOSIGNAL) < 0) {
 			fprintf(stderr, "Warmup: Failed to send request: %s\n", strerror(errno));
 			break;
 		}
-		char buffer[1024] = {0};
-		if (recv(sockfd, buffer, sizeof(buffer), 0) < 0) {
-			fprintf(stderr, "Warmup: Failed to receive response: %s\n", strerror(errno));
-			break;
-		}
+		char buffer[8192];
+		recv(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL);
 	}
 
 	close(sockfd);
@@ -145,10 +137,13 @@ void VirtualMachine::begin_warmup_client()
 		fprintf(stderr, "Warmup: No intra connect requests, skipping...\n");
 		return;
 	}
-	if (warmup_thread.joinable()) {
-		warmup_thread.join();
+	for (auto& thread : warmup_threads) {
+		if (thread.joinable()) {
+			thread.join();
+		}
 	}
-	warmup_thread = std::thread([this]()
+	warmup_threads.reserve(NUM_WARMUP_THREADS);
+	warmup_threads.push_back(std::thread([this]()
 	{
 		if (config().warmup_address.find("unix:") == 0) {
 			printf("Warmup: Starting warmup client at %s, requests %u\n",
@@ -171,14 +166,16 @@ void VirtualMachine::begin_warmup_client()
 		if (config().verbose) {
 			fprintf(stderr, "Warmup: Finished sending requests\n");
 		}
-	});
+	}));
 }
 
 void VirtualMachine::stop_warmup_client()
 {
 	warmup_thread_stop_please = true;
-	if (warmup_thread.joinable()) {
-		warmup_thread.join();
+	for (auto& thread : warmup_threads) {
+		if (thread.joinable()) {
+			thread.join();
+		}
 	}
 	if (config().verbose) {
 		fprintf(stderr, "Warmup: Stopped warmup server\n");
