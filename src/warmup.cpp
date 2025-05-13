@@ -11,9 +11,9 @@
 #include <unistd.h>
 // The warmup thread hosts a simple HTTP server that is able to
 // send minimalistic requests intended to warm up a JIT compiler.
+static constexpr int NUM_WARMUP_THREADS = 8;
 static std::vector<std::thread> warmup_threads;
 static bool              warmup_thread_stop_please = false;
-static constexpr int     NUM_WARMUP_THREADS = 8;
 
 void VirtualMachine::warmup()
 {
@@ -63,6 +63,10 @@ void VirtualMachine::warmup()
 	}
 	// Restore the listening socket
 	this->m_tracked_client_fd = old_listening_fd;
+
+	// Run one last time to make sure the VM takes into
+	// account the remainder of the warmup requests
+	machine().run( config().max_boot_time );
 
 	// Stop the warmup client
 	this->stop_warmup_client();
@@ -120,8 +124,14 @@ bool VirtualMachine::connect_and_send_request(const std::string& address, uint16
 			fprintf(stderr, "Warmup: Failed to send request: %s\n", strerror(errno));
 			break;
 		}
-		char buffer[8192];
-		recv(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL);
+		char buffer[32768];
+		ssize_t bytes = recv(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL);
+		if (bytes < 0) {
+			fprintf(stderr, "Warmup: Failed to receive data: %s\n", strerror(errno));
+			break;
+		} else if (bytes == 0) {
+			break;
+		}
 	}
 
 	close(sockfd);
