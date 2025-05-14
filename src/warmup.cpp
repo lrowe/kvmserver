@@ -2,7 +2,6 @@
 
 #include <cstring>
 #include <arpa/inet.h>
-#include <limits.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
@@ -26,25 +25,27 @@ void VirtualMachine::warmup()
 	this->set_waiting_for_requests(false);
 	// Waiting for a certain amount of requests in order
 	// to warm up the JIT compiler in the VM
-	int freed_fds = 0;
-	auto old_listening_fd = this->m_tracked_client_fd;
-	this->m_tracked_client_fd = -1;
+	int freed_sockets = 0;
+	std::unordered_set<int> accepted_sockets;
+	// Track accepted sockets
+	machine().fds().accept_socket_callback =
+	[&](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
+		const int vfd = machine().fds().manage(fd, true, true);
+		accepted_sockets.insert(vfd);
+		return vfd;
+	};
+	// Track closed accepted sockets
 	machine().fds().free_fd_callback =
 	[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
-		char proc_path[PATH_MAX];
-		char path[PATH_MAX];
-		sprintf(proc_path, "/proc/self/fd/%d", entry.real_fd);
-		readlink(proc_path, path, sizeof(path));
-		// TODO: should check that socket was accepted on listening fd.
-		// Sockets have path "socket:[<number>]"
-		if (path[0] != '/') {
-			freed_fds++;
+		if (accepted_sockets.find(vfd) != accepted_sockets.end()) {
+			accepted_sockets.erase(vfd);
+			freed_sockets++;
 		}
 		return false; // Nothing happened
 	};
 	machine().fds().epoll_wait_callback =
 	[&](int vfd, int epfd, int timeout) {
-		if (freed_fds >= NUM_WARMUP_THREADS * config().warmup_connect_requests) {
+		if (freed_sockets >= NUM_WARMUP_THREADS * config().warmup_connect_requests) {
 			if (config().verbose) {
 				fprintf(stderr, "Warmed up the JIT compiler\n");
 			}
@@ -67,12 +68,15 @@ void VirtualMachine::warmup()
 		fprintf(stderr, "The program did not wait for requests after warmup\n");
 		throw std::runtime_error("The program did not wait for requests after warmup");
 	}
-	// Restore the listening socket
-	this->m_tracked_client_fd = old_listening_fd;
 
 	// Run one last time to make sure the VM takes into
 	// account the remainder of the warmup requests
 	machine().run( config().max_boot_time );
+
+	// Reset the warmup callbacks
+	machine().fds().accept_socket_callback = nullptr;
+	machine().fds().free_fd_callback = nullptr;
+	machine().fds().epoll_wait_callback = nullptr;
 
 	// Stop the warmup client
 	this->stop_warmup_client();

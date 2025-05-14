@@ -296,22 +296,13 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		{
 			// Don't turn the VM into a forkable master VM
 			machine().fds().set_preempt_epoll_wait(false);
-			machine().fds().free_fd_callback =
-			[](int, tinykvm::FileDescriptors::Entry&) -> bool {
-				return false; // Nothing happened
-			};
-			machine().fds().epoll_wait_callback =
-			[](int, int, int) {
-				return true; // Call epoll_wait
-			};
+			machine().fds().free_fd_callback = nullptr;
+			machine().fds().epoll_wait_callback = nullptr;
 			return result;
 		}
 		else
 		{
-			machine().fds().free_fd_callback =
-			[](int, tinykvm::FileDescriptors::Entry&) -> bool {
-				return false; // Nothing happened
-			};
+			machine().fds().free_fd_callback = nullptr;
 			machine().fds().epoll_wait_callback =
 			[this](int vfd, int epfd, int timeout) {
 				this->set_waiting_for_requests(true);
