@@ -293,25 +293,6 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		// Resume measuring initialization time
 		start = std::chrono::high_resolution_clock::now();
 
-		// Switch threads a few times to make sure the guest gets a chance
-		// to run eg. background optimizers (maglev, turbofan, etc.)
-		// XXX: Experimental, not sure if this is needed
-		if (true)
-		{
-			machine().fds().set_preempt_epoll_wait(true);
-			machine().fds().epoll_wait_callback =
-			[this](int, int, int) {
-				this->machine().stop();
-				return false; // Don't call epoll_wait
-			};
-			for (int i = 0; i < 2; ++i) {
-				const auto rax = machine().registers().rax;
-				machine().threads().suspend_and_yield(rax);
-				machine().run( 2.0f );
-			}
-			machine().fds().set_preempt_epoll_wait(false);
-		}
-
 		if (just_one_vm)
 		{
 			// Don't turn the VM into a forkable master VM
