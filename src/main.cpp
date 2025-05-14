@@ -193,7 +193,7 @@ int main(int argc, char* argv[], char* envp[])
 		// Initialize the VM by running through main()
 		// and then do a warmup, if required
 		const bool just_one_vm = (config.concurrency == 1 && !config.ephemeral);
-		vm.initialize(std::bind(&VirtualMachine::warmup, &vm), just_one_vm);
+		auto init = vm.initialize(std::bind(&VirtualMachine::warmup, &vm), just_one_vm);
 		// Check if the VM is (likely) waiting for requests
 		if (!vm.is_waiting_for_requests()) {
 			fprintf(stderr, "The program did not wait for requests\n");
@@ -201,12 +201,14 @@ int main(int argc, char* argv[], char* envp[])
 		}
 
 		// Print informational message
-		printf("Program '%s' loaded. vm=%u%s huge=%u/%u\n",
+		printf("Program '%s' loaded. vm=%u%s huge=%u/%u init=%lums warmup=%lums\n",
 			config.filename.c_str(),
 			config.concurrency,
 			(config.ephemeral ? (config.ephemeral_keep_working_memory ? " ephemeral-kwm" : " ephemeral") : ""),
 			config.hugepage_arena_size > 0,
-			config.hugepage_requests_arena > 0);
+			config.hugepage_requests_arena > 0,
+			init.initialization_time.count(),
+			init.warmup_time.count());
 
 		// Non-ephemeral single-threaded - we already have a VM
 		if (just_one_vm)

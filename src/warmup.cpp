@@ -1,6 +1,5 @@
 #include "vm.hpp"
 
-#include <chrono>
 #include <cstring>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -49,9 +48,6 @@ void VirtualMachine::warmup()
 		return true; // Call epoll_wait
 	};
 
-	// Measure the time it takes to warm up the JIT compiler
-	auto start = std::chrono::high_resolution_clock::now();
-
 	// Start the warmup client
 	this->begin_warmup_client();
 
@@ -71,12 +67,6 @@ void VirtualMachine::warmup()
 
 	// Stop the warmup client
 	this->stop_warmup_client();
-
-	auto end = std::chrono::high_resolution_clock::now();
-	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-	if (config().verbose) {
-	}
-	fprintf(stderr, "Warmup took %ld ms\n", duration);
 }
 
 bool VirtualMachine::connect_and_send_request(const std::string& address, uint16_t port)

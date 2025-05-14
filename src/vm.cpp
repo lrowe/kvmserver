@@ -203,8 +203,10 @@ void VirtualMachine::reset_to(const VirtualMachine& other)
 	machine().fds().set_accepting_connections(true);
 }
 
-void VirtualMachine::initialize(std::function<void()> warmup_callback, bool just_one_vm)
+VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warmup_callback, bool just_one_vm)
 {
+	InitResult result;
+	auto start = std::chrono::high_resolution_clock::now();
 	try {
 		const auto stack = machine().mmap_allocate(settings::MAIN_STACK_SIZE);
 		const auto stack_end = stack + settings::MAIN_STACK_SIZE;
@@ -274,10 +276,21 @@ void VirtualMachine::initialize(std::function<void()> warmup_callback, bool just
 			throw std::runtime_error("Program did not wait for requests");
 		}
 
+		// Measure the time taken to initialize the VM
+		auto end = std::chrono::high_resolution_clock::now();
+		result.initialization_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
 		// If a warmup callback is provided, call it
 		if (warmup_callback) {
+			// Measure the time taken to warmup the VM
+			start = std::chrono::high_resolution_clock::now();
 			warmup_callback();
+			end = std::chrono::high_resolution_clock::now();
+			result.warmup_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 		}
+
+		// Resume measuring initialization time
+		start = std::chrono::high_resolution_clock::now();
 
 		if (just_one_vm)
 		{
@@ -291,7 +304,7 @@ void VirtualMachine::initialize(std::function<void()> warmup_callback, bool just
 			[](int, int, int) {
 				return true; // Call epoll_wait
 			};
-			return;
+			return result;
 		}
 		else
 		{
@@ -326,6 +339,10 @@ void VirtualMachine::initialize(std::function<void()> warmup_callback, bool just
 
 		// Make forkable (with *NO* working memory)
 		machine().prepare_copy_on_write(0UL);
+
+		// Finish measuring initialization time
+		end = std::chrono::high_resolution_clock::now();
+		result.initialization_time += std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 	}
 	catch (const tinykvm::MachineException& me)
 	{
@@ -343,6 +360,7 @@ void VirtualMachine::initialize(std::function<void()> warmup_callback, bool just
 			"Error: %s\n", e.what());
 		throw; /* IMPORTANT: Re-throw */
 	}
+	return result;
 }
 
 void VirtualMachine::resume_fork()
