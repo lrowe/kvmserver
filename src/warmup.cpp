@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <arpa/inet.h>
+#include <limits.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
@@ -30,7 +31,15 @@ void VirtualMachine::warmup()
 	this->m_tracked_client_fd = -1;
 	machine().fds().free_fd_callback =
 	[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
-		freed_fds++;
+		char proc_path[PATH_MAX];
+		char path[PATH_MAX];
+		sprintf(proc_path, "/proc/self/fd/%d", entry.real_fd);
+		readlink(proc_path, path, sizeof(path));
+		// TODO: should check that socket was accepted on listening fd.
+		// Sockets have path "socket:[<number>]"
+		if (path[0] != '/') {
+			freed_fds++;
+		}
 		return false; // Nothing happened
 	};
 	machine().fds().epoll_wait_callback =
