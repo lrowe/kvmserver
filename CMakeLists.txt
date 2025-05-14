@@ -17,3 +17,11 @@ target_link_libraries(kvmserver
 	nlohmann_json
 	jemalloc
 )
+
+if (SANITIZE)
+	target_compile_options(kvmserver PRIVATE -fsanitize=address,undefined)
+	target_link_options(kvmserver PRIVATE
+		-fsanitize=address,undefined
+		-fno-omit-frame-pointer
+	)
+endif()
