@@ -139,11 +139,11 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	}
 	/* Allow duplicating read-only FDs from the source */
 	machine().fds().set_find_readonly_master_vm_fd_callback(
-		[&] (int vfd) -> std::optional<const tinykvm::FileDescriptors::Entry*> {
-			return other.machine().fds().entry_for_vfd(vfd);
+		[this, master = &other] (int vfd) -> std::optional<const tinykvm::FileDescriptors::Entry*> {
+			return master->machine().fds().entry_for_vfd(vfd);
 		});
 	machine().fds().set_connect_socket_callback(
-	[&] (int fd, struct sockaddr_storage& addr) -> bool {
+	[this] (int fd, struct sockaddr_storage& addr) -> bool {
 		(void)fd;
 		(void)addr;
 		return true;
@@ -154,7 +154,7 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	if (this->m_ephemeral)
 	{
 		machine().fds().accept_socket_callback =
-		[&](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
+		[this](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
 			if (m_tracked_client_fd != -1) {
 				fprintf(stderr, "Forked VM %u already has a connection on fd %d\n", m_reqid, m_tracked_client_fd);
 				return -EAGAIN;
@@ -167,13 +167,14 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 			return m_tracked_client_fd;
 		};
 		machine().fds().free_fd_callback =
-		[&](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
+		[this](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
 			if (vfd == m_tracked_client_fd) {
 				if (config().verbose) {
 					printf("Forked VM %u closed connection on fd %d. Resetting...\n", m_reqid, m_tracked_client_fd);
 				}
-				this->reset_to(*m_master_instance);
-				return true; // The VM was reset
+				machine().stop();
+				this->m_reset_needed = true;
+				return true; // The VM will be reset
 			}
 			return false; // Nothing happened
 		};
@@ -192,9 +193,8 @@ void VirtualMachine::reset_to(const VirtualMachine& other)
 		.max_cow_mem = other.config().max_req_mem,
 		.reset_free_work_mem = other.config().limit_req_mem,
 		.reset_copy_all_registers = true,
-		.reset_keep_all_work_memory = !this->m_reset_needed && other.config().ephemeral_keep_working_memory,
+		.reset_keep_all_work_memory = other.config().ephemeral_keep_working_memory,
 	});
-	this->m_reset_needed = false;
 	if (this->m_on_reset_callback) {
 		this->m_on_reset_callback();
 	}
@@ -361,9 +361,22 @@ void VirtualMachine::resume_fork()
 		// The VM is ephemeral, so it should be residing in a system call handler now
 		// In order to be fast, we will directly re-do the system call, and then
 		// resume the VM.
-		machine().system_call(machine().cpu(), SYS_epoll_wait);
+		while (true)
+		{
+			machine().system_call(machine().cpu(), SYS_epoll_wait);
 
-		machine().vmresume();
+			machine().vmresume();
+
+			if (this->m_reset_needed)
+			{
+				// Reset the VM
+				this->reset_to(*this->m_master_instance);
+				this->m_reset_needed = false;
+				continue;
+			}
+			fprintf(stderr, "VM %s did not need reset\n", name().c_str());
+			break;
+		}
 	}
 	else
 	{

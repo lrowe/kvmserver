@@ -28,6 +28,7 @@ struct VirtualMachine
 	std::string binary_type_string() const noexcept;
 	void set_on_reset_callback(on_reset_t callback) noexcept { m_on_reset_callback = std::move(callback); }
 	void set_ephemeral(bool ephemeral) noexcept { m_ephemeral = ephemeral; }
+	bool is_ephemeral() const noexcept { return m_ephemeral; }
 
 	void warmup();
 	void open_debugger();

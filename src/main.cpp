@@ -286,7 +286,7 @@ int main(int argc, char* argv[], char* envp[])
 							forked_vm.open_debugger();
 						}
 					}
-					if (vm.config().ephemeral) {
+					if (vm.is_ephemeral() || failure) {
 						printf("Forked VM %u finished. Resetting...\n", i);
 						try {
 							forked_vm.reset_to(vm);
