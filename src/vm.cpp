@@ -3,6 +3,7 @@
 #include "settings.hpp"
 #include <stdexcept>
 #include <sys/signal.h>
+#include <sys/syscall.h>
 #include <tinykvm/linux/threads.hpp>
 extern std::vector<uint8_t> file_loader(const std::string& filename);
 static std::vector<uint8_t> ld_linux_x86_64_so;

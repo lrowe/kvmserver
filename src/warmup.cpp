@@ -1,5 +1,6 @@
 #include "vm.hpp"
 
+#include <atomic>
 #include <cstring>
 #include <arpa/inet.h>
 #include <sys/socket.h>
