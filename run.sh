@@ -8,10 +8,10 @@ popd
 
 # When PERF=1 run with perf
 if [ "$PERF" = "1" ]; then
-	perf record -g --call-graph dwarf -- .build/kvmserver $@
+	perf record -g --call-graph dwarf -- .build/kvmserver "$@"
 	perf script | c++filt > perf.out
 	echo "perf.out generated"
 	exit 0
 else
-	./.build/kvmserver $@
+	./.build/kvmserver "$@"
 fi
