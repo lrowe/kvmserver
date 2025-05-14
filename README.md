@@ -16,32 +16,17 @@ Running 10s test @ http://127.00.1:8080
 Requests/sec:  84739.32
 Transfer/sec:     12.53MB
 
-$ ./wrk -c64 -t64 http://127.00.1:8080
-Running 10s test @ http://127.00.1:8080
-  64 threads and 64 connections
+$ ./wrk -c1 -t1 http://127.0.0.1:8000
+Running 10s test @ http://127.0.0.1:8000
+  1 threads and 1 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency   323.48us   29.34us   2.08ms   89.37%
-    Req/Sec     3.11k    85.66     3.99k    97.00%
-  1997161 requests in 10.10s, 295.22MB read
-Requests/sec: 197741.36
-Transfer/sec:     29.23MB
+    Latency    15.50us  137.91us   6.20ms   99.71%
+    Req/Sec    99.79k    11.03k  106.20k    93.07%
+  1002164 requests in 10.10s, 148.14MB read
+Requests/sec:  99223.33
+Transfer/sec:     14.67MB
 ```
-Deno has good performance. 12us on average single-threaded.
-
-> $ deno serve --parallel --allow-all --unstable-net deno/main.ts
-
-Deno serve seems to be a wrapper around fork():
-```sh
-$ ./wrk -c64 -t64 http://127.00.1:8080
-Running 10s test @ http://127.00.1:8080
-  64 threads and 64 connections
-  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    84.89us  335.01us  19.62ms   98.35%
-    Req/Sec    17.48k     2.47k   35.03k    83.03%
-  11240457 requests in 10.10s, 1.62GB read
-Requests/sec: 1112864.20
-Transfer/sec:    164.50MB
-```
+Deno has good performance. 12us on average single-threaded. With single-threaded it also has to GC every once in a while, which adds acts as a large speed bump.
 
 Deno sandboxed in TinyKVM:
 ```sh
@@ -80,11 +65,18 @@ Running 10s test @ http://127.0.0.1:8000
 Requests/sec:  13329.30
 Transfer/sec:      2.21MB
 ```
-There is natural overhead in establishing a new connection for each request, but that's a necessary part of proper request isolation. After each request the VM is completely reset, ready to go again. This benchmark is running an unmodified Deno stable binary with no special code or FFI. :)
+There is natural overhead in establishing a new connection for each request, but that's a necessary part of isolating each request. After each request the VM is completely reset, ready to go again. This benchmark is running an unmodified Deno stable binary with no special code or FFI. :)
 
-## React benchmark
+```sh
+$ whereis deno
+deno: /home/gonzo/.deno/bin/deno
+$ deno
+Deno 2.3.1
+```
 
-Running a React server benchmark we find:
+## React page-rendering benchmark
+
+Running a React benchmark we find:
 ```sh
 -= TinyKVM w/Deno ephemeral with reset as tail-latency =-
 
