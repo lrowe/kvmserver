@@ -5,7 +5,7 @@
 	"max_memory": 4400,
 	"hugepage_arena_size": 64,
 	"environment": [
-		"DENO_V8_FLAGS=--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--single-threaded,--max-old-space-size=256,--max-semi-space-size=256",
+		"DENO_V8_FLAGS=--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--max-old-space-size=256,--max-semi-space-size=256",
 		"DENO_DIR=$HOME/.cache/deno",
 		"DENO_NO_UPDATE_CHECK=1"
 	],
