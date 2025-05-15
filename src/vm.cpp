@@ -184,8 +184,6 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 }
 VirtualMachine::~VirtualMachine()
 {
-	// Destructor
-	printf("VirtualMachine destructor\n");
 }
 
 void VirtualMachine::reset_to(const VirtualMachine& other)
@@ -275,6 +273,8 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 
 		// Make sure the program is waiting for requests
 		if (!is_waiting_for_requests()) {
+			if (just_one_vm)
+				return result;
 			throw std::runtime_error("Program did not wait for requests");
 		}
 

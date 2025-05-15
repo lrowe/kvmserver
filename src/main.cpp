@@ -130,6 +130,9 @@ int main(int argc, char* argv[], char* envp[])
 		// Load the configuration file
 		Configuration config = Configuration::FromJsonFile(args.config_file);
 		// Anything set on the command-line will override the config file
+		if (args.verbose) {
+			config.verbose = true;
+		}
 		if (args.concurrency >= 0) {
 			config.concurrency = args.concurrency;
 		}
@@ -224,6 +227,8 @@ int main(int argc, char* argv[], char* envp[])
 		auto init = vm.initialize(std::bind(&VirtualMachine::warmup, &vm), just_one_vm);
 		// Check if the VM is (likely) waiting for requests
 		if (!vm.is_waiting_for_requests()) {
+			if (just_one_vm)
+				return 0; // It exited normally
 			fprintf(stderr, "The program did not wait for requests\n");
 			return 1;
 		}
