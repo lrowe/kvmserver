@@ -163,12 +163,21 @@ int main(int argc, char* argv[], char* envp[])
 				.virtual_path = "/proc/self/exe",
 				.symlink = true,
 			});
-			config.allowed_paths.push_back(Configuration::VirtualPath {
-				.real_path = "/",
-				.virtual_path = "/",
-				.writable = args.allow_write,
-				.prefix = true,
-			});
+			if (args.allow_write) {
+				config.allowed_paths.push_back(Configuration::VirtualPath {
+					.real_path = "/",
+					.virtual_path = "/",
+					.writable = true,
+					.prefix = true,
+				});
+			}
+			if (args.allow_read) {
+				config.allowed_paths.push_back(Configuration::VirtualPath {
+					.real_path = "/",
+					.virtual_path = "$/",
+					.writable = false
+				});
+			}
 		}
 		// TODO: avoid duplicates
 		if (args.allow_env) {
