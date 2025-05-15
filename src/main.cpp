@@ -126,12 +126,13 @@ int main(int argc, char* argv[], char* envp[])
 			config.warmup_connect_requests = 1;
 			config.warmup_intra_connect_requests = args.warmup_requests;
 		}
-		if (config.filename.empty()) {
-			if (args.filename.empty()) {
+		if (args.filename.empty()) {
+			if (config.filename.empty()) {
 				fprintf(stderr, "Error: Program filename is required\n");
 				print_usage(argv[0]);
 				exit(EXIT_FAILURE);
 			}
+		} else {
 			config.filename = args.filename;
 		}
 		// TODO: Should arguments be appended or replaced?
