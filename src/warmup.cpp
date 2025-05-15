@@ -10,7 +10,7 @@
 #include <unistd.h>
 // The warmup thread hosts a simple HTTP server that is able to
 // send minimalistic requests intended to warm up a JIT compiler.
-static constexpr int NUM_WARMUP_THREADS = 4;
+static constexpr int NUM_WARMUP_THREADS = 1;
 static std::vector<std::thread> warmup_threads;
 static std::atomic<int> warmup_thread_completed = 0;
 static bool warmup_thread_stop_please = false;

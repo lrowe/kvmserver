@@ -1,1 +1,3 @@
-./run.sh -w 250 -e -t 2 -c deno/config.json -- run --allow-all https://raw.githubusercontent.com/lrowe/react-server-render-benchmark/refs/heads/main/renderer.mjs "$@"
+./run.sh -w 1000 -e -t 2 -c deno/config.json -- run --allow-all \
+  https://raw.githubusercontent.com/lrowe/react-server-render-benchmark/refs/heads/main/renderer.mjs \
+  "$@"
