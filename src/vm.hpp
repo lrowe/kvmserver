@@ -1,4 +1,5 @@
 #pragma once
+#include <sys/socket.h>
 #include <chrono>
 #include <tinykvm/machine.hpp>
 #include "config.hpp"
@@ -47,7 +48,7 @@ struct VirtualMachine
 private:
 	void begin_warmup_client();
 	void stop_warmup_client();
-	bool connect_and_send_request(const std::string& address, uint16_t port);
+	bool connect_and_send_requests(const sockaddr* serv_addr, socklen_t serv_addr_len);
 
 	tinykvm::Machine m_machine;
 	const Configuration& m_config;
