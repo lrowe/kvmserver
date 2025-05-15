@@ -213,9 +213,6 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		// Warmup requests
 		config.warmup_connect_requests = json.value("warmup_connect_requests", config.warmup_connect_requests);
 		config.warmup_intra_connect_requests = json.value("warmup_intra_connect_requests", config.warmup_intra_connect_requests);
-		config.warmup_port = json.value("warmup_port", config.warmup_port);
-		config.warmup_address = json.value("warmup_address", config.warmup_address);
-		config.warmup_address = apply_dollar_vars(config.warmup_address);
 		config.warmup_path = json.value("warmup_path", config.warmup_path); // HTTP path
 
 		// Raise the memory sizes into megabytes

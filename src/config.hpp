@@ -11,8 +11,6 @@ struct Configuration
 	uint16_t concurrency = 1; /* Request VMs */
 	uint16_t warmup_connect_requests = 0; /* Warmup requests, individual connections */
 	uint16_t warmup_intra_connect_requests = 100; /* Send N requests while connected */
-	uint16_t warmup_port = 8000; /* Warmup port */
-	std::string warmup_address = "127.0.0.1";
 	std::string warmup_path = "/"; /* Path to send requests to */
 
 	float    max_boot_time = 20.0f; /* Seconds */

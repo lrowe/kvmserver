@@ -1,11 +1,11 @@
 #include "vm.hpp"
 
+#include <atomic>
 #include <cstring>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <netinet/in.h>
+#include <limits.h>
+#include <netdb.h>
 #include <stdexcept>
+#include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
 // The warmup thread hosts a simple HTTP server that is able to
@@ -21,7 +21,6 @@ void VirtualMachine::warmup()
 	if (config().warmup_connect_requests == 0) {
 		return;
 	}
-	printf("Warming up the guest VM (%u requests)...\n", config().warmup_connect_requests);
 	this->set_waiting_for_requests(false);
 	// Waiting for a certain amount of requests in order
 	// to warm up the JIT compiler in the VM
@@ -82,39 +81,14 @@ void VirtualMachine::warmup()
 	this->stop_warmup_client();
 }
 
-bool VirtualMachine::connect_and_send_request(const std::string& address, uint16_t port)
+bool VirtualMachine::connect_and_send_requests(const sockaddr* serv_addr, socklen_t serv_addr_len)
 {
-	static const std::string UNIX_PREFIX = "unix:";
-	struct sockaddr_storage serv_addr;
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	socklen_t serv_addr_len;
-	if (address.find(UNIX_PREFIX) == 0) {
-		struct sockaddr_un* serv_addr_un = reinterpret_cast<struct sockaddr_un*>(&serv_addr);
-		serv_addr_len = sizeof(*serv_addr_un);
-		serv_addr_un->sun_family = AF_UNIX;
-		// sun_path must be nul terminated.
-		if (address.length() - UNIX_PREFIX.size() > sizeof(serv_addr_un->sun_path) - 1) {
-			fprintf(stderr, "Warmup: Invalid address (path too long): %s\n", address.c_str());
-			return false;
-		}
-		strncpy(serv_addr_un->sun_path, &address[UNIX_PREFIX.size()], sizeof(serv_addr_un->sun_path) - 1);
-	} else {
-		struct sockaddr_in* serv_addr_in = reinterpret_cast<struct sockaddr_in*>(&serv_addr);
-		serv_addr_len = sizeof(*serv_addr_in);
-		serv_addr_in->sin_family = AF_INET;
-		serv_addr_in->sin_port = htons(port);
-		if (inet_pton(AF_INET, address.c_str(), &serv_addr_in->sin_addr) <= 0) {
-			fprintf(stderr, "Warmup: Invalid address: %s\n", address.c_str());
-			return false;
-		}
-	}
-
-	int sockfd = socket(serv_addr.ss_family, SOCK_STREAM, 0);
+	int sockfd = socket(serv_addr->sa_family, SOCK_STREAM, 0);
 	if (sockfd < 0) {
 		fprintf(stderr, "Warmup: Failed to create socket: %s\n", strerror(errno));
 		return false;
 	}
-	if (connect(sockfd, (struct sockaddr*)&serv_addr, serv_addr_len) < 0) {
+	if (connect(sockfd, serv_addr, serv_addr_len) < 0) {
 		fprintf(stderr, "Warmup: Connection failed: %s\n", strerror(errno));
 		close(sockfd);
 		return false;
@@ -164,27 +138,43 @@ void VirtualMachine::begin_warmup_client()
 		fprintf(stderr, "Warmup: No intra connect requests, skipping...\n");
 		return;
 	}
+	struct sockaddr_storage serv_addr;
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	socklen_t serv_addr_len;
+	if (getsockname(this->m_tracked_client_fd, (struct sockaddr*)&serv_addr, &serv_addr_len) < 0) {
+		fprintf(stderr, "Warmup: Failed getsockname: %s\n", strerror(errno));
+		return;
+	}
+	std::string host(HOST_NAME_MAX, 0);
+	std::string serv(PATH_MAX, 0);
+	if (
+		getnameinfo((struct sockaddr*)&serv_addr, serv_addr_len, host.data(), host.size(),
+			serv.data(), serv.size(), NI_NUMERICHOST | NI_NUMERICSERV
+		) < 0
+	) {
+		fprintf(stderr, "Warmup: Failed getnameinfo: %s\n", strerror(errno));
+		return;
+	}
+	printf("Warming up the guest VM listening on %s:%s (%d threads * %u connections * %u requests)\n",
+		host.c_str(), serv.c_str(), NUM_WARMUP_THREADS,
+		config().warmup_connect_requests, config().warmup_intra_connect_requests);
 	for (auto& thread : warmup_threads) {
 		if (thread.joinable()) {
 			thread.join();
 		}
 	}
 	warmup_threads.reserve(NUM_WARMUP_THREADS);
-	for (int i = 0; i < NUM_WARMUP_THREADS; ++i) {
-		warmup_threads.emplace_back([this]()
+	for (int t = 0; t < NUM_WARMUP_THREADS; ++t) {
+		warmup_threads.emplace_back([this, t, &serv_addr, serv_addr_len]()
 		{
-			if (config().warmup_address.find("unix:") == 0) {
-				printf("Warmup: Starting warmup client at %s, requests %u\n",
-					config().warmup_address.c_str(), config().warmup_connect_requests);
-			} else {
-				printf("Warmup: Starting warmup client at %s:%u, requests %u\n",
-					config().warmup_address.c_str(), config().warmup_port, config().warmup_connect_requests);
+			if (config().verbose) {
+				fprintf(stderr, "Warmup: Starting warmup client %d\n", t);
 			}
 			// Start a simple HTTP client that will send
 			// a request to the VM in order to warm up the guest program.
-			for (int i = 0; i < config().warmup_connect_requests; ++i) {
-				if (!connect_and_send_request(config().warmup_address, config().warmup_port)) {
-					fprintf(stderr, "Warmup: Failed to send request %d\n", i);
+			for (int c = 0; c < config().warmup_connect_requests; ++c) {
+				if (!connect_and_send_requests((struct sockaddr*)&serv_addr, serv_addr_len)) {
+					fprintf(stderr, "Warmup: Failure on connection %d\n", c);
 					break;
 				}
 				if (warmup_thread_stop_please) {
@@ -192,7 +182,7 @@ void VirtualMachine::begin_warmup_client()
 				}
 			}
 			if (config().verbose) {
-				fprintf(stderr, "Warmup: Finished sending requests\n");
+				fprintf(stderr, "Warmup: Finished sending requests on warmup client %d\n", t);
 			}
 		});
 	}

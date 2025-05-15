@@ -1,10 +1,28 @@
 #include <atomic>
 #include <cstdio>
 #include <getopt.h>
+#include <sstream>
 #include <thread>
+#include <unistd.h>
 #include "vm.hpp"
 extern std::vector<uint8_t> file_loader(const std::string& filename);
 static std::array<std::atomic<uint64_t>, 64> reset_counters;
+
+std::string lookup_program(const std::string& program)
+{
+	if (program.find('/') == std::string::npos) {
+		const char* path_env = getenv("PATH");
+		std::stringstream ss(path_env);
+		std::string dirname;
+		while (std::getline(ss, dirname, ':')) {
+			std::string abspath = dirname + "/" + program;
+			if (access(abspath.c_str(), X_OK) == 0) {
+				return abspath;
+			}
+		}
+	}
+	return program;
+}
 
 struct CommandLineArgs
 {
@@ -61,7 +79,6 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 	while ((opt = getopt_long(argc, argv, "p:c:t:ew:v", longopts, nullptr)) != -1) {
 		switch (opt) {
 			case 'p':
-				// TODO: lookup program filemame on PATH
 				args.filename = optarg;
 				break;
 			case 'c':
@@ -126,14 +143,16 @@ int main(int argc, char* argv[], char* envp[])
 			config.warmup_connect_requests = 1;
 			config.warmup_intra_connect_requests = args.warmup_requests;
 		}
-		if (config.filename.empty()) {
-			if (args.filename.empty()) {
+		if (args.filename.empty()) {
+			if (config.filename.empty()) {
 				fprintf(stderr, "Error: Program filename is required\n");
 				print_usage(argv[0]);
 				exit(EXIT_FAILURE);
 			}
+		} else {
 			config.filename = args.filename;
 		}
+		config.filename = lookup_program(config.filename);
 		// TODO: Should arguments be appended or replaced?
 		for (const auto& arg : args.remaining_args) {
 			config.main_arguments.push_back(arg);
