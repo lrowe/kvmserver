@@ -1,1 +1,1 @@
-./run.sh -w 400 -t 2 -c deno/config.json -- run --allow-all deno/main.ts
+./run.sh -w 400 -t 2 -e -c deno/config.json -- serve --allow-all deno/main.ts
