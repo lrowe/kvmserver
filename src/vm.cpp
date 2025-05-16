@@ -269,7 +269,15 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		};
 
 		// Continue/resume or run through main()
-		machine().run( config().max_boot_time );
+		if (getenv("DEBUG") != nullptr) {
+			open_debugger();
+		} else if (just_one_vm) {
+			// If running with just one VM, let it run forever
+			machine().run();
+		} else {
+			// If running with multiple VMs, startup should be fast
+			machine().run( config().max_boot_time );
+		}
 
 		// Make sure the program is waiting for requests
 		if (!is_waiting_for_requests()) {
@@ -343,6 +351,9 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			"Machine not initialized properly: %s\n", name().c_str());
 		fprintf(stderr,
 			"Error: %s Data: 0x%#lX\n", me.what(), me.data());
+		if (getenv("DEBUG") != nullptr) {
+			open_debugger();
+		}
 		throw; /* IMPORTANT: Re-throw */
 	}
 	catch (const std::exception& e)
@@ -351,6 +362,9 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			"Machine not initialized properly: %s\n", name().c_str());
 		fprintf(stderr,
 			"Error: %s\n", e.what());
+		if (getenv("DEBUG") != nullptr) {
+			open_debugger();
+		}
 		throw; /* IMPORTANT: Re-throw */
 	}
 	return result;
