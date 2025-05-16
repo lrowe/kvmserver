@@ -217,7 +217,7 @@ int main(int argc, char* argv[], char* envp[])
 		VirtualMachine::init_kvm();
 
 		// Read the binary file
-		std::vector<uint8_t> binary = file_loader(config.filename);
+		const std::vector<uint8_t> binary = file_loader(config.filename);
 
 		// Create a VirtualMachine instance
 		VirtualMachine vm(binary, config);
@@ -233,15 +233,31 @@ int main(int argc, char* argv[], char* envp[])
 			return 1;
 		}
 
+		// Get warmup time (if any)
+		const std::string warmup_time = (init.warmup_time.count() > 0) ?
+			(" warmup=" + std::to_string(init.warmup_time.count()) + "ms") : "";
+		// Get /proc/self RSS
+		std::string process_rss;
+		FILE* fp = fopen("/proc/self/statm", "r");
+		if (fp) {
+			uint64_t size = 0;
+			uint64_t rss = 0;
+			fscanf(fp, "%lu %lu", &size, &rss);
+			fclose(fp);
+			rss = (rss * getpagesize()) >> 20; // Convert to MB
+			process_rss = " rss=" + std::to_string(rss) + "MB";
+		}
+
 		// Print informational message
-		printf("Program '%s' loaded. vm=%u%s huge=%u/%u init=%lums warmup=%lums\n",
+		printf("Program '%s' loaded. vm=%u%s huge=%u/%u init=%lums%s%s\n",
 			config.filename.c_str(),
 			config.concurrency,
 			(config.ephemeral ? (config.ephemeral_keep_working_memory ? " ephemeral-kwm" : " ephemeral") : ""),
 			config.hugepage_arena_size > 0,
 			config.hugepage_requests_arena > 0,
 			init.initialization_time.count(),
-			init.warmup_time.count());
+			warmup_time.c_str(),
+			process_rss.c_str());
 
 		// Non-ephemeral single-threaded - we already have a VM
 		if (just_one_vm)
