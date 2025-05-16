@@ -16,7 +16,7 @@ services:
       - DENO_NO_UPDATE_CHECK=1
       - DENO_V8_FLAGS=--predictable,--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--max-old-space-size=256,--max-semi-space-size=256
     group_add:
-      - keep-groups
+      - "${KVM_GID:-109}"
     init: true
     read_only: true
     tty: true
@@ -31,6 +31,7 @@ services:
     environment:
       - VARNISH_HTTP_PORT=8080
     image: varnish:7.7
+    network_mode: host
     ports:
       - "8080:8080"
     volumes:
