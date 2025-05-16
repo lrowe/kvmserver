@@ -16,16 +16,16 @@ services:
       - DENO_NO_UPDATE_CHECK=1
       - DENO_V8_FLAGS=--predictable,--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--max-old-space-size=256,--max-semi-space-size=256
     group_add:
-      - "${KVM_GID:-109}"
+      # With docker we must supply the KVM_GID which varies per system:
+      # $ KVM_GID=$(getent group kvm | cut -d: -f3) docker compose up
+      # With rootless podman we must specify "keep-groups" (used as default here.)
+      - "${KVM_GID:-keep-groups}"
     init: true
     read_only: true
     tty: true
     volumes:
       - sock:/sock
   varnish:
-    configs:
-      - source: default.vcl
-        target: /etc/varnish/default.vcl
     depends_on:
       - backend
     environment:
@@ -36,27 +36,8 @@ services:
       - "8080:8080"
     volumes:
       - sock:/sock
+      - $PWD/default.vcl:/etc/varnish/default.vcl:ro
 
 volumes:
   # Ideally socket volume would be tmpfs but that cannot be shared between containers.
   sock:
-
-configs:
-  default.vcl:
-    content: |
-      vcl 4.1;
-      backend default {
-        //.host = "backend";
-        //.port = "8000";
-        .path = "/sock/backend";
-      }
-      sub vcl_recv {
-        return (pass);
-      }
-      sub vcl_backend_fetch {
-        set bereq.http.connection = "close";
-        return (fetch);
-      }
-      sub vcl_backend_response {
-          set beresp.uncacheable = true;
-      }
