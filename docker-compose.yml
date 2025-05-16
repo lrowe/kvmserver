@@ -1,0 +1,61 @@
+services:
+  backend:
+    build: .
+    command:
+      - /bin/bash
+      - -c
+      - |
+        set -e;
+        rm -f /sock/backend;
+        umask 000;
+        exec kvmserver --allow-all -e -t 2 -w 1000 -p deno -- run --allow-all \
+          'data:,Deno.serve({ path: "/sock/backend" }, () => new Response("hello"))'
+    devices:
+      - /dev/kvm
+    environment:
+      - DENO_NO_UPDATE_CHECK=1
+      - DENO_V8_FLAGS=--predictable,--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--max-old-space-size=256,--max-semi-space-size=256
+    group_add:
+      - keep-groups
+    init: true
+    read_only: true
+    tty: true
+    volumes:
+      - sock:/sock
+  varnish:
+    configs:
+      - source: default.vcl
+        target: /etc/varnish/default.vcl
+    depends_on:
+      - backend
+    environment:
+      - VARNISH_HTTP_PORT=8080
+    image: varnish:7.7
+    ports:
+      - "8080:8080"
+    volumes:
+      - sock:/sock
+
+volumes:
+  # Ideally socket volume would be tmpfs but that cannot be shared between containers.
+  sock:
+
+configs:
+  default.vcl:
+    content: |
+      vcl 4.1;
+      backend default {
+        //.host = "backend";
+        //.port = "8000";
+        .path = "/sock/backend";
+      }
+      sub vcl_recv {
+        return (pass);
+      }
+      sub vcl_backend_fetch {
+        set bereq.http.connection = "close";
+        return (fetch);
+      }
+      sub vcl_backend_response {
+          set beresp.uncacheable = true;
+      }
