@@ -121,24 +121,34 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 {
 	machine().set_userdata<VirtualMachine> (this);
 	machine().fds().set_verbose(config().verbose);
-	machine().set_verbose_system_calls(
-		other.config().verbose_syscalls);
-	machine().set_verbose_mmap_syscalls(
-		other.config().verbose_syscalls);
-	machine().set_verbose_thread_syscalls(
-		other.config().verbose_syscalls);
+	machine().set_verbose_system_calls(config().verbose_syscalls);
+	machine().set_verbose_mmap_syscalls(config().verbose_syscalls);
+	machine().set_verbose_thread_syscalls(config().verbose_syscalls);
 	// Set the current working directory
-	machine().fds().set_current_working_directory(
-		other.config().current_working_directory);
+	machine().fds().set_current_working_directory(config().current_working_directory);
 	// Disable epoll_wait() preemption when timeout=-1
 	machine().fds().set_preempt_epoll_wait(false);
-	/* Allow open read-only files */
+	// Add all the allowed paths to the VMs file descriptor sub-system
 	for (auto& path : config().allowed_paths) {
-		if (path.writable) {
+		if (path.prefix && path.writable) {
+			// Add as a prefix path
+			machine().fds().add_writable_prefix(path.virtual_path);
 			continue;
 		}
 		machine().fds().add_readonly_file(path.virtual_path);
 	}
+	// Add a single writable file simply called 'state'
+	machine().fds().set_open_writable_callback(
+	[this] (std::string& path) -> bool {
+		for (auto& tpath : config().allowed_paths) {
+			if (tpath.virtual_path == path && tpath.writable) {
+				// Rewrite the path to the allowed file
+				path = tpath.real_path;
+				return true;
+			}
+		}
+		return false;
+	});
 	/* Allow duplicating read-only FDs from the source */
 	machine().fds().set_find_readonly_master_vm_fd_callback(
 		[this, master = &other] (int vfd) -> std::optional<const tinykvm::FileDescriptors::Entry*> {
