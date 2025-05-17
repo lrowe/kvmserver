@@ -100,6 +100,11 @@ VirtualMachine::VirtualMachine(const std::vector<uint8_t>& binary, const Configu
 				return true;
 			}
 		}
+		if (path == "/proc/self/exe") {
+			// Rewrite the path to the real path of the executable
+			path = config.filename;
+			return true;
+		}
 		return false;
 	});
 }
