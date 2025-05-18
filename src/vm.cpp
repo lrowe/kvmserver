@@ -206,6 +206,7 @@ void VirtualMachine::reset_to(const VirtualMachine& other)
 	m_machine.reset_to(other.m_machine, tinykvm::MachineOptions{
 		.max_mem = other.m_machine.max_address(),
 		.max_cow_mem = other.config().max_req_mem,
+		.stack_size = settings::MAIN_STACK_SIZE,
 		.reset_free_work_mem = other.config().limit_req_mem,
 		.reset_copy_all_registers = true,
 		.reset_keep_all_work_memory = other.config().ephemeral_keep_working_memory,
@@ -223,10 +224,6 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 	InitResult result;
 	auto start = std::chrono::high_resolution_clock::now();
 	try {
-		const auto stack = machine().mmap_allocate(settings::MAIN_STACK_SIZE);
-		const auto stack_end = stack + settings::MAIN_STACK_SIZE;
-		machine().set_stack_address(stack_end);
-
 		// Use constrained working memory
 		machine().prepare_copy_on_write(config().max_main_memory);
 
