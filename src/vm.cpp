@@ -283,6 +283,34 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		// Continue/resume or run through main()
 		if (getenv("DEBUG") != nullptr) {
 			open_debugger();
+		} else if (getenv("SAMPLING") != nullptr) {
+			bool first = true;
+			std::unordered_map<uint64_t, uint64_t> rip_samples;
+			while (true) {
+				// Run for a short time to allow the VM to initialize
+				try {
+					machine().run(first ? 0.29f : 0.1f);
+				} catch (const tinykvm::MachineTimeoutException& tme) {
+					// Grab a RIP sample
+					auto& regs = machine().registers();
+					const uint64_t rip = regs.rip;
+					auto it = rip_samples.find(rip);
+					unsigned samples = 0;
+					if (it != rip_samples.end()) {
+						it->second++;
+						samples = it->second;
+					} else {
+						rip_samples.insert_or_assign(rip, 1);
+						samples = 1;
+					}
+					const std::string sym = machine().resolve(rip,
+						std::string_view((const char *)m_original_binary.data(), m_original_binary.size()));
+					printf("RIP: 0x%08llX %s (%u)\n", rip, sym.c_str(), samples);
+					// The VM is not initialized yet, so we can continue
+					first = false;
+					continue;
+				}
+			}
 		} else if (just_one_vm) {
 			// If running with just one VM, let it run forever
 			machine().run();
