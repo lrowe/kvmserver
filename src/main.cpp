@@ -160,27 +160,20 @@ int main(int argc, char* argv[], char* envp[])
 		for (const auto& arg : args.remaining_args) {
 			config.main_arguments.push_back(arg);
 		}
-		if (args.allow_read || args.allow_write) {
+		if (args.allow_write) {
 			config.allowed_paths.push_back(Configuration::VirtualPath {
-				.real_path = config.filename,
-				.virtual_path = "/proc/self/exe",
-				.symlink = true,
+				.real_path = "/",
+				.virtual_path = "/",
+				.writable = true,
+				.prefix = true,
 			});
-			if (args.allow_write) {
-				config.allowed_paths.push_back(Configuration::VirtualPath {
-					.real_path = "/",
-					.virtual_path = "/",
-					.writable = true,
-					.prefix = true,
-				});
-			}
-			if (args.allow_read) {
-				config.allowed_paths.push_back(Configuration::VirtualPath {
-					.real_path = "/",
-					.virtual_path = "$/",
-					.writable = false
-				});
-			}
+		}
+		if (args.allow_read) {
+			config.allowed_paths.push_back(Configuration::VirtualPath {
+				.real_path = "/",
+				.virtual_path = "$/",
+				.writable = false
+			});
 		}
 		// TODO: avoid duplicates
 		if (args.allow_env) {
