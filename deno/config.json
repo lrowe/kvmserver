@@ -1,9 +1,9 @@
 {
-	//"filename": "$HOME/github/deno/target/release/deno",
+	//"filename": "$HOME/github/deno/target/x86_64-unknown-linux-gnu/release/deno",
+	//"filename": "$HOME/github/deno/target/x86_64-unknown-linux-gnu/debug/deno",
 	"filename": "$HOME/.deno/bin/deno",
-	"address_space": 66000,
+	"address_space": 68000,
 	"max_memory": 4400,
-	"hugepage_arena_size": 64,
 	"environment": [
 		"DENO_V8_FLAGS=--predictable,--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--max-old-space-size=256,--max-semi-space-size=256",
 		"DENO_DIR=$HOME/.cache/deno",
