@@ -12,6 +12,10 @@ if [ "$PERF" = "1" ]; then
 	perf script | c++filt > perf.out
 	echo "perf.out generated"
 	exit 0
+elif [ "$GDB" = "1" ]; then
+	# When GDB=1 run with gdb
+	gdb --args .build/kvmserver "$@"
+	exit 0
 else
 	./.build/kvmserver "$@"
 fi

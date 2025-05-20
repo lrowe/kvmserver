@@ -307,6 +307,9 @@ int main(int argc, char* argv[], char* envp[])
 						}
 					}
 				});
+				if (getenv("DEBUG_FORK") != nullptr) {
+					forked_vm.open_debugger();
+				}
 				while (true) {
 					bool failure = false;
 					try {

@@ -2,6 +2,7 @@
 
 #include "settings.hpp"
 #include <stdexcept>
+#include <sys/poll.h>
 #include <sys/signal.h>
 #include <sys/syscall.h>
 #include <tinykvm/linux/threads.hpp>
@@ -122,7 +123,8 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	  m_binary_type(other.m_binary_type),
 	  m_reqid(reqid),
 	  m_ephemeral(other.m_ephemeral),
-	  m_master_instance(&other)
+	  m_master_instance(&other),
+	  m_poll_method(other.m_poll_method)
 {
 	machine().set_userdata<VirtualMachine> (this);
 	machine().fds().set_verbose(config().verbose);
@@ -285,11 +287,27 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 				}
 				// If the listening socket is found, we are now waiting for
 				// requests, so we can fork new VMs.
+				this->m_poll_method = PollMethod::Epoll;
 				this->set_waiting_for_requests(true);
 				this->machine().stop();
 				return false; // Don't call epoll_wait
 			}
 			return true; // Call epoll_wait
+		};
+		machine().fds().poll_callback =
+		[this](struct pollfd* fds, unsigned nfds, int timeout) {
+			if (this->m_tracked_client_vfd != -1) {
+				// Find the listening socket in the poll set
+				for (unsigned i = 0; i < nfds; i++) {
+					if (fds[i].fd == this->m_tracked_client_vfd) {
+						this->m_poll_method = PollMethod::Poll;
+						this->set_waiting_for_requests(true);
+						this->machine().stop();
+						return false; // Don't call poll()
+					}
+				}
+			}
+			return true; // Call poll()
 		};
 
 		// Continue/resume or run through main()
@@ -360,6 +378,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			machine().fds().set_preempt_epoll_wait(false);
 			machine().fds().free_fd_callback = nullptr;
 			machine().fds().epoll_wait_callback = nullptr;
+			machine().fds().poll_callback = nullptr;
 			return result;
 		}
 		else
@@ -367,9 +386,30 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			machine().fds().free_fd_callback = nullptr;
 			machine().fds().epoll_wait_callback =
 			[this](int vfd, int epfd, int timeout) {
-				this->set_waiting_for_requests(true);
-				this->machine().stop();
-				return false; // Don't call epoll_wait
+				auto& entry = machine().fds().get_epoll_entry_for_vfd(vfd);
+				for (const auto& it : entry.epoll_fds) {
+					if (it.first == this->m_tracked_client_vfd) {
+						// The listening socket is in the epoll set
+						this->m_poll_method = PollMethod::Epoll;
+						this->set_waiting_for_requests(true);
+						this->machine().stop();
+						return false; // Don't call epoll_wait
+					}
+				}
+				return true; // Call epoll_wait
+			};
+			machine().fds().poll_callback =
+			[this](struct pollfd* fds, unsigned nfds, int timeout) {
+				// Find the listening socket in the poll set
+				for (unsigned i = 0; i < nfds; i++) {
+					if (fds[i].fd == this->m_tracked_client_vfd) {
+						this->m_poll_method = PollMethod::Poll;
+						this->set_waiting_for_requests(true);
+						this->machine().stop();
+						return false; // Don't call poll()
+					}
+				}
+				return true; // Call poll()
 			};
 
 			this->m_waiting_for_requests = false;
@@ -386,7 +426,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		auto& regs = machine().registers();
 		// Emulate SYSRET to user mode
 		regs.rip = regs.rcx;    // Restore next RIP
-		//regs.rflags = regs.r11; // Restore rflags
+		regs.rflags = regs.r11; // Restore rflags
 		regs.rax = -4; // EINTR: interrupted system call
 		machine().set_registers(regs);
 
@@ -431,7 +471,19 @@ void VirtualMachine::resume_fork()
 		// resume the VM.
 		while (true)
 		{
-			machine().system_call(machine().cpu(), SYS_epoll_wait);
+			switch (this->m_poll_method)
+			{
+			case PollMethod::Poll:
+				machine().system_call(machine().cpu(), SYS_poll);
+				break;
+			case PollMethod::Epoll:
+				machine().system_call(machine().cpu(), SYS_epoll_wait);
+				break;
+			case PollMethod::Undefined:
+				// This should never happen
+				fprintf(stderr, "VM %s does not have a known polling method\n", name().c_str());
+				throw std::runtime_error("VM does not have a known polling method");
+			}
 
 			machine().vmresume();
 

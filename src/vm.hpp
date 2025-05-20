@@ -61,6 +61,12 @@ private:
 	// The tracked client fd for ephemeral VMs
 	int m_tracked_client_fd = -1;
 	int m_tracked_client_vfd = -1;
+	enum PollMethod {
+		Undefined,
+		Poll,
+		Epoll,
+	};
+	PollMethod m_poll_method = Undefined;
 	on_reset_t m_on_reset_callback = nullptr;
 	const VirtualMachine* m_master_instance = nullptr;
 };
