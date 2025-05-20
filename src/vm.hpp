@@ -14,6 +14,11 @@ struct VirtualMachine
 		StaticPie,
 		Dynamic,
 	};
+	enum PollMethod {
+		Undefined,
+		Poll,
+		Epoll,
+	};
 
 	void wait_for_requests_paused();
 	bool is_waiting_for_requests() const noexcept { return m_waiting_for_requests; }
@@ -30,6 +35,7 @@ struct VirtualMachine
 	void set_on_reset_callback(on_reset_t callback) noexcept { m_on_reset_callback = std::move(callback); }
 	void set_ephemeral(bool ephemeral) noexcept { m_ephemeral = ephemeral; }
 	bool is_ephemeral() const noexcept { return m_ephemeral; }
+	PollMethod poll_method() const noexcept { return m_poll_method; }
 
 	void warmup();
 	void open_debugger();
@@ -61,11 +67,6 @@ private:
 	// The tracked client fd for ephemeral VMs
 	int m_tracked_client_fd = -1;
 	int m_tracked_client_vfd = -1;
-	enum PollMethod {
-		Undefined,
-		Poll,
-		Epoll,
-	};
 	PollMethod m_poll_method = Undefined;
 	on_reset_t m_on_reset_callback = nullptr;
 	const VirtualMachine* m_master_instance = nullptr;

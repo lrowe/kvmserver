@@ -248,8 +248,15 @@ int main(int argc, char* argv[], char* envp[])
 		}
 
 		// Print informational message
-		printf("Program '%s' loaded. vm=%u%s huge=%u/%u init=%lums%s%s\n",
+		std::string method = "epoll";
+		if (vm.poll_method() == VirtualMachine::PollMethod::Poll) {
+			method = "poll";
+		} else if (vm.poll_method() == VirtualMachine::PollMethod::Undefined) {
+			method = "undefined";
+		}
+		printf("Program '%s' loaded. %s vm=%u%s huge=%u/%u init=%lums%s%s\n",
 			config.filename.c_str(),
+			method.c_str(),
 			config.concurrency,
 			(config.ephemeral ? (config.ephemeral_keep_working_memory ? " ephemeral-kwm" : " ephemeral") : ""),
 			config.hugepage_arena_size > 0,
