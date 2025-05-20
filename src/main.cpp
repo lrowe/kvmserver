@@ -1,5 +1,6 @@
 #include <atomic>
 #include <cstdio>
+#include <filesystem>
 #include <getopt.h>
 #include <sstream>
 #include <thread>
@@ -10,18 +11,23 @@ static std::array<std::atomic<uint64_t>, 64> reset_counters;
 
 std::string lookup_program(const std::string& program)
 {
+	namespace fs = std::filesystem;
 	if (program.find('/') == std::string::npos) {
-		const char* path_env = getenv("PATH");
-		std::stringstream ss(path_env);
+		std::stringstream ss(getenv("PATH"));
 		std::string dirname;
 		while (std::getline(ss, dirname, ':')) {
-			std::string abspath = dirname + "/" + program;
-			if (access(abspath.c_str(), X_OK) == 0) {
-				return abspath;
+			fs::path filepath = (fs::path(dirname) / program).lexically_normal();
+			if (access(filepath.c_str(), X_OK) == 0) {
+				return filepath;
 			}
 		}
+		throw std::invalid_argument("Program not found on path: " + program);
 	}
-	return program;
+	fs::path filepath = fs::absolute(program).lexically_normal();
+	if (access(filepath.c_str(), X_OK) == 0) {
+		return filepath;
+	}
+	throw std::invalid_argument("Program not an executable: " + program);
 }
 
 struct CommandLineArgs
