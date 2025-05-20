@@ -60,6 +60,7 @@ private:
 	bool m_waiting_for_requests = false;
 	// The tracked client fd for ephemeral VMs
 	int m_tracked_client_fd = -1;
+	int m_tracked_client_vfd = -1;
 	on_reset_t m_on_reset_callback = nullptr;
 	const VirtualMachine* m_master_instance = nullptr;
 };

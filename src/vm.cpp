@@ -172,22 +172,26 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	{
 		machine().fds().accept_socket_callback =
 		[this](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
-			if (m_tracked_client_fd != -1) {
-				fprintf(stderr, "Forked VM %u already has a connection on fd %d\n", m_reqid, m_tracked_client_fd);
+			if (this->m_tracked_client_vfd != -1) {
+				fprintf(stderr, "Forked VM %u already has a connection on fd %d (%d)\n",
+					this->m_reqid, this->m_tracked_client_vfd, this->m_tracked_client_fd);
 				return -EAGAIN;
 			}
-			m_tracked_client_fd = machine().fds().manage(fd, true, true);
+			this->m_tracked_client_fd = fd;
+			this->m_tracked_client_vfd = machine().fds().manage(fd, true, true);
 			if (config().verbose) {
-				printf("Forked VM %u accepted connection on fd %d\n", m_reqid, m_tracked_client_fd);
+				printf("Forked VM %u accepted connection on vfd %d (%d)\n",
+					this->m_reqid, this->m_tracked_client_vfd, fd);
 			}
 			machine().fds().set_accepting_connections(false);
-			return m_tracked_client_fd;
+			return this->m_tracked_client_vfd;
 		};
 		machine().fds().free_fd_callback =
 		[this](int vfd, tinykvm::FileDescriptors::Entry& entry) -> bool {
-			if (vfd == m_tracked_client_fd) {
+			if (vfd == this->m_tracked_client_vfd) {
 				if (config().verbose) {
-					printf("Forked VM %u closed connection on fd %d. Resetting...\n", m_reqid, m_tracked_client_fd);
+					printf("Forked VM %u closed connection on fd %d (%d). Resetting...\n",
+						this->m_reqid, this->m_tracked_client_vfd, this->m_tracked_client_fd);
 				}
 				machine().stop();
 				this->m_reset_needed = true;
@@ -266,11 +270,18 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		// Wait for a listening socket and then stop in epoll_wait()
 		machine().fds().listening_socket_callback =
 		[this](int vfd, int fd) {
+			this->m_tracked_client_vfd = vfd;
 			this->m_tracked_client_fd = fd;
 		};
 		machine().fds().epoll_wait_callback =
 		[this](int vfd, int epfd, int timeout) {
 			if (this->m_tracked_client_fd != -1) {
+				// Find the listening socket in the epoll set
+				const auto& entry = machine().fds().get_epoll_entry_for_vfd(vfd);
+				if (entry.epoll_fds.find(m_tracked_client_vfd) == entry.epoll_fds.end()) {
+					// The listening socket is not in the epoll set
+					return true; // Call epoll_wait
+				}
 				// If the listening socket is found, we are now waiting for
 				// requests, so we can fork new VMs.
 				this->set_waiting_for_requests(true);
@@ -305,7 +316,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 					}
 					const std::string sym = machine().resolve(rip,
 						std::string_view((const char *)m_original_binary.data(), m_original_binary.size()));
-					printf("RIP: 0x%08llX %s (%u)\n", rip, sym.c_str(), samples);
+					printf("RIP: 0x%08lX %s (%u)\n", rip, sym.c_str(), samples);
 					// The VM is not initialized yet, so we can continue
 					first = false;
 					continue;
