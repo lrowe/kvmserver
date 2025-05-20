@@ -220,6 +220,7 @@ void VirtualMachine::reset_to(const VirtualMachine& other)
 	}
 
 	this->m_tracked_client_fd = -1;
+	this->m_tracked_client_vfd = -1;
 	machine().fds().set_accepting_connections(true);
 }
 
@@ -275,7 +276,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		};
 		machine().fds().epoll_wait_callback =
 		[this](int vfd, int epfd, int timeout) {
-			if (this->m_tracked_client_fd != -1) {
+			if (this->m_tracked_client_vfd != -1) {
 				// Find the listening socket in the epoll set
 				const auto& entry = machine().fds().get_epoll_entry_for_vfd(vfd);
 				if (entry.epoll_fds.find(m_tracked_client_vfd) == entry.epoll_fds.end()) {
