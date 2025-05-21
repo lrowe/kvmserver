@@ -173,6 +173,12 @@ int main(int argc, char* argv[], char* envp[])
 				.writable = true,
 				.prefix = true,
 			});
+			config.allowed_paths.push_back(Configuration::VirtualPath {
+				.real_path = config.current_working_directory,
+				.virtual_path = ".",
+				.writable = true,
+				.prefix = true,
+			});
 		}
 		if (args.allow_read) {
 			config.allowed_paths.push_back(Configuration::VirtualPath {
