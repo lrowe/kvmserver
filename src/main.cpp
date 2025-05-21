@@ -41,12 +41,14 @@ struct CommandLineArgs
 	uint16_t warmup_requests = 0;
 	std::string config_file;
 	std::string filename;
+	std::string guest_cwd;
 	std::vector<std::string> remaining_args;
 };
 const int ALLOW_ALL = 0x100;
 const int ALLOW_READ = 0x101;
 const int ALLOW_WRITE = 0x102;
 const int ALLOW_ENV = 0x103;
+const int GUEST_CWD = 0x104;
 static const struct option longopts[] = {
 	{"program", required_argument, nullptr, 'p'},
 	{"config", required_argument, nullptr, 'c'},
@@ -58,6 +60,7 @@ static const struct option longopts[] = {
 	{"allow-read", no_argument, nullptr, ALLOW_READ},
 	{"allow-write", no_argument, nullptr, ALLOW_WRITE},
 	{"allow-env", no_argument, nullptr, ALLOW_ENV},
+	{"cwd", required_argument, nullptr, GUEST_CWD},
 	{nullptr, 0, nullptr, 0}
 };
 
@@ -75,6 +78,7 @@ static void print_usage(const char* program_name)
 	fprintf(stderr, "  --allow-read             Allow filesystem read access\n");
 	fprintf(stderr, "  --allow-write            Allow filesystem write access\n");
 	fprintf(stderr, "  --allow-env              Allow environment access\n");
+	fprintf(stderr, "  --cwd <dir>              Set the guests working directory\n");
 	fprintf(stderr, "A program or configuration file is required in order to be able to host a program.\n");
 }
 
@@ -115,6 +119,9 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 				break;
 			case ALLOW_ENV:
 				args.allow_env = true;
+				break;
+			case GUEST_CWD:
+				args.guest_cwd = optarg;
 				break;
 			default:
 				print_usage(argv[0]);
@@ -162,6 +169,9 @@ int main(int argc, char* argv[], char* envp[])
 			config.filename = args.filename;
 		}
 		config.filename = lookup_program(config.filename);
+		if (!args.guest_cwd.empty()) {
+			config.current_working_directory = args.guest_cwd;
+		}
 		// TODO: Should arguments be appended or replaced?
 		for (const auto& arg : args.remaining_args) {
 			config.main_arguments.push_back(arg);
@@ -188,9 +198,8 @@ int main(int argc, char* argv[], char* envp[])
 			});
 			config.allowed_paths.push_back(Configuration::VirtualPath {
 				.real_path = config.current_working_directory,
-				.virtual_path = ".",
-				.writable = false,
-				.prefix = true,
+				.virtual_path = "$.",
+				.writable = false
 			});
 		}
 		// TODO: avoid duplicates
@@ -220,6 +229,8 @@ int main(int argc, char* argv[], char* envp[])
 			}
 			printf("]\n");
 			// Allowed paths
+			printf("Current working directory: %s\n",
+				config.current_working_directory.c_str());
 			for (const auto& path : config.allowed_paths) {
 				printf("Allowed Path: %s -> %s%s\n",
 					path.virtual_path.c_str(), path.real_path.c_str(),
