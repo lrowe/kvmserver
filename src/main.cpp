@@ -180,6 +180,12 @@ int main(int argc, char* argv[], char* envp[])
 				.virtual_path = "$/",
 				.writable = false
 			});
+			config.allowed_paths.push_back(Configuration::VirtualPath {
+				.real_path = config.current_working_directory,
+				.virtual_path = ".",
+				.writable = false,
+				.prefix = true,
+			});
 		}
 		// TODO: avoid duplicates
 		if (args.allow_env) {
@@ -209,7 +215,9 @@ int main(int argc, char* argv[], char* envp[])
 			printf("]\n");
 			// Allowed paths
 			for (const auto& path : config.allowed_paths) {
-				printf("Allowed Path: %s -> %s\n", path.real_path.c_str(), path.virtual_path.c_str());
+				printf("Allowed Path: %s -> %s%s\n",
+					path.virtual_path.c_str(), path.real_path.c_str(),
+					path.prefix ? " (prefix)" : "");
 			}
 		}
 
