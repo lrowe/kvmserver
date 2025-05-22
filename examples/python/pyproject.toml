@@ -1,0 +1,13 @@
+[project]
+name = "kvmserver-examples-python"
+version = "0.1.0"
+readme = "README.md"
+classifiers = ["Private :: Do Not Upload"]
+dependencies = [
+    "uvicorn>=0.34.2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11.10",
+]

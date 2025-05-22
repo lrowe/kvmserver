@@ -35,20 +35,23 @@ async fn main() -> Result<(), std::io::Error> {
     }
 }
 
-async fn process<Stream: AsyncRead + AsyncWrite + Unpin>(mut stream: Stream) -> Result<(), std::io::Error> {
+async fn process<Stream: AsyncRead + AsyncWrite + Unpin>(
+    mut stream: Stream,
+) -> Result<(), std::io::Error> {
     let mut req = [0; 4096];
     let _bytes_read = stream.read(&mut req).await?;
     if !req.starts_with(b"GET ") {
         return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
     }
-    stream.write_all(
-        b"HTTP/1.1 200 OK\r\n\
+    stream
+        .write_all(
+            b"HTTP/1.1 200 OK\r\n\
         Connection: close\r\n\
-        Content-Length: 17\r\n\
         Content-Type: text/plain; charset=utf-8\r\n\
         \r\n\
-        Hello rust World!"
-    ).await?;
+        Hello, World!",
+        )
+        .await?;
     stream.shutdown().await?;
     Ok(())
 }
