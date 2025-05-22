@@ -13,6 +13,15 @@
 		"DENO_DIR=$HOME/.cache/deno",
 		"DENO_NO_UPDATE_CHECK=1"
 	],
+	"allowed_networks": [
+		{
+			"domain": "deno.land"
+		}, {
+			"address": "0.0.0.0",
+			"port": 8000,
+			"listen": true
+		}
+	],
 	"allowed_paths": [
 		"/dev/urandom",
 		"/etc/resolv.conf",

@@ -55,6 +55,7 @@ private:
 	void begin_warmup_client();
 	void stop_warmup_client();
 	bool connect_and_send_requests(const sockaddr* serv_addr, socklen_t serv_addr_len);
+	bool validate_listener(int fd);
 
 	tinykvm::Machine m_machine;
 	const Configuration& m_config;

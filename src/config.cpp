@@ -2,6 +2,10 @@
 #include <fstream>
 #include <limits.h>
 #include <nlohmann/json.hpp>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <linux/un.h>
 #include <unistd.h>
 
 static std::string apply_dollar_vars(std::string str)
@@ -209,6 +213,104 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 		}
 		config.current_working_directory = json.value("current_working_directory", config.current_working_directory);
 		config.current_working_directory = apply_dollar_vars(config.current_working_directory);
+
+		// Allowed Unix paths and socket addresses
+		if (json.contains("allowed_networks"))
+		{
+			for (const auto& path : json["allowed_networks"]) {
+				NetworkPath net_path;
+				if (path.contains("path"))
+				{
+					// This is a Unix socket path
+					std::string unix_path = path.value("path", "");
+					if (unix_path.empty()) {
+						fprintf(stderr, "Missing required field 'path' in allowed_unix_paths in configuration file: %s\n", filename.c_str());
+						throw std::runtime_error("Missing required field 'path' in allowed_unix_paths in configuration file: " + filename);
+					}
+					unix_path = apply_dollar_vars(unix_path);
+					net_path.unix_path = unix_path;
+					net_path.is_listenable = path.value("listen", false);
+					config.allowed_network_unix.push_back(net_path);
+				}
+				else if (path.contains("domain"))
+				{
+					const std::string address = path["domain"].get<std::string>();
+					// Resolve the domain name to an IP address
+					struct addrinfo hints;
+					struct addrinfo* res;
+					memset(&hints, 0, sizeof(hints));
+					hints.ai_family = AF_UNSPEC; // IPv4 or IPv6
+					hints.ai_socktype = SOCK_STREAM; // TCP
+					if (getaddrinfo(address.c_str(), nullptr, &hints, &res) != 0) {
+						fprintf(stderr, "Invalid domain name in allowed_network in configuration file: %s\n", filename.c_str());
+						throw std::runtime_error("Invalid domain name in allowed_network in configuration file: " + filename);
+					}
+					if (res->ai_family == AF_INET) {
+						std::memcpy(&net_path.sockaddr, res->ai_addr, sizeof(struct sockaddr_in));
+						config.allowed_network_ipv4.push_back(net_path);
+					} else if (res->ai_family == AF_INET6) {
+						std::memcpy(&net_path.sockaddr, res->ai_addr, sizeof(struct sockaddr_in6));
+						config.allowed_network_ipv6.push_back(net_path);
+					} else {
+						fprintf(stderr, "Invalid address family in allowed_network in configuration file: %s\n", filename.c_str());
+						throw std::runtime_error("Invalid address family in allowed_network in configuration file: " + filename);
+					}
+					freeaddrinfo(res);
+				}
+				else if (path.contains("address"))
+				{
+					// This is a socket address
+					if (path["address"].is_string()) {
+						// Check if it's an IPv4 or IPv6 address
+						std::string address = path["address"].get<std::string>();
+						if (address.find('.') != std::string::npos
+							&& address.find_first_of("0123456789") != std::string::npos) {
+							// IPv4 address
+							struct sockaddr_in addr;
+							addr.sin_family = AF_INET;
+							if (inet_pton(AF_INET, address.c_str(), &addr.sin_addr) <= 0) {
+								fprintf(stderr, "Invalid IPv4 address in allowed_network in configuration file: %s\n", filename.c_str());
+								throw std::runtime_error("Invalid IPv4 address in allowed_network in configuration file: " + filename);
+							}
+							if (path.contains("port")) {
+								// Set the port for the IPv4 address
+								addr.sin_port = htons(path["port"].get<uint16_t>());
+							}
+							net_path.sockaddr = *(struct sockaddr_storage *)&addr;
+							net_path.is_listenable = path.value("listen", false);
+							config.allowed_network_ipv4.push_back(net_path);
+						}
+						else if (address.find(':') != std::string::npos)
+						{
+							// IPv6 address
+							struct sockaddr_in6 addr;
+							addr.sin6_family = AF_INET6;
+							if (inet_pton(AF_INET6, address.c_str(), &addr.sin6_addr) <= 0) {
+								fprintf(stderr, "Invalid IPv6 address in allowed_network in configuration file: %s\n", filename.c_str());
+								throw std::runtime_error("Invalid IPv6 address in allowed_network in configuration file: " + filename);
+							}
+							if (path.contains("port")) {
+								// Set the port for the IPv6 address
+								addr.sin6_port = htons(path["port"].get<uint16_t>());
+							}
+							net_path.sockaddr = *(struct sockaddr_storage *)&addr;
+							net_path.is_listenable = path.value("listen", false);
+							config.allowed_network_ipv6.push_back(net_path);
+						}
+						else
+						{
+							fprintf(stderr, "Invalid address format in allowed_network in configuration file: %s\n", filename.c_str());
+							throw std::runtime_error("Invalid address format in allowed_network in configuration file: " + filename);
+						}
+					} else {
+						fprintf(stderr, "Invalid type for 'address' in allowed_network in configuration file: %s\n", filename.c_str());
+						throw std::runtime_error("Invalid type for 'address' in allowed_network in configuration file: " + filename);
+					}
+				}
+			}
+		}
+		// Allow all network connections
+		config.network_allow_all = json.value("network_allow_all", false);
 
 		// Warmup requests
 		config.warmup_connect_requests = json.value("warmup_connect_requests", config.warmup_connect_requests);

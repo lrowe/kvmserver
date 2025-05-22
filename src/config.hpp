@@ -1,9 +1,10 @@
 #pragma once
 #include <string>
+#include <sys/socket.h> // for sockaddr_storage
+#include <tinykvm/common.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <tinykvm/common.hpp>
 
 struct Configuration
 {
@@ -53,6 +54,16 @@ struct Configuration
 	std::vector<VirtualPath> allowed_paths;
 	std::unordered_map<std::string, size_t> rewrite_path_indices;
 	std::string current_working_directory = "/";
+
+	struct NetworkPath {
+		std::string unix_path;
+		struct sockaddr_storage sockaddr;
+		bool is_listenable = false;
+	};
+	std::vector<NetworkPath> allowed_network_unix;
+	std::vector<NetworkPath> allowed_network_ipv4;
+	std::vector<NetworkPath> allowed_network_ipv6;
+	bool network_allow_all = false; /* Allow all network connections */
 
 	static Configuration FromJsonFile(const std::string& filename);
 };
