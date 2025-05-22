@@ -20,8 +20,12 @@
 			"address": "0.0.0.0",
 			"port": 8000,
 			"listen": true
+		}, {
+			"address": "127.0.0.1",
+			"port": 6379
 		}
 	],
+	"network_allow_all": false,
 	"allowed_paths": [
 		"/dev/urandom",
 		"/etc/resolv.conf",
