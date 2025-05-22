@@ -6,7 +6,6 @@
 	"address_space": 16000,
 	"max_memory": 24000,
 	"max_request_memory": 512,
-	"heap_address_hint": 120,
 	"executable_heap": true,
 	"main_arguments": [
 		"--single-threaded", "$PWD/node/main.js"

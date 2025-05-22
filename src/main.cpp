@@ -190,16 +190,18 @@ int main(int argc, char* argv[], char* envp[])
 				.prefix = true,
 			});
 		}
-		if (args.allow_read) {
+		else if (args.allow_read) {
 			config.allowed_paths.push_back(Configuration::VirtualPath {
 				.real_path = "/",
-				.virtual_path = "$/",
-				.writable = false
+				.virtual_path = "/",
+				.writable = false,
+				.prefix = true,
 			});
 			config.allowed_paths.push_back(Configuration::VirtualPath {
 				.real_path = config.current_working_directory,
-				.virtual_path = "$.",
-				.writable = false
+				.virtual_path = ".",
+				.writable = false,
+				.prefix = true,
 			});
 		}
 		// TODO: avoid duplicates

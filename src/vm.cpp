@@ -55,8 +55,13 @@ VirtualMachine::VirtualMachine(const std::vector<uint8_t>& binary, const Configu
 	// Add all the allowed paths to the VMs file descriptor sub-system
 	for (auto& path : config.allowed_paths) {
 		if (path.prefix && path.writable) {
-			// Add as a prefix path
+			// Add as a read+write prefix path
 			machine().fds().add_writable_prefix(path.virtual_path);
+			machine().fds().add_readonly_prefix(path.virtual_path);
+			continue;
+		} else if (path.prefix) {
+			// Add as a read-only prefix path
+			machine().fds().add_readonly_prefix(path.virtual_path);
 			continue;
 		}
 		machine().fds().add_readonly_file(path.virtual_path);

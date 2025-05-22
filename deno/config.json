@@ -2,45 +2,31 @@
 	//"filename": "$HOME/github/deno/target/x86_64-unknown-linux-gnu/release/deno",
 	//"filename": "$HOME/github/deno/target/x86_64-unknown-linux-gnu/debug/deno",
 	"filename": "$HOME/.deno/bin/deno",
-	"address_space": 68000,
-	"max_memory": 4400,
+	"max_memory": 4200,
+	"executable_heap": true,
+	"executable_remappings": {
+		"caged_heap": ["0x1000000000", 64],
+		"unknown":    ["0xC00100000", 128]
+	},
 	"environment": [
 		"DENO_V8_FLAGS=--predictable,--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--max-old-space-size=256,--max-semi-space-size=256",
 		"DENO_DIR=$HOME/.cache/deno",
 		"DENO_NO_UPDATE_CHECK=1"
 	],
-	"executable_heap": true,
 	"allowed_paths": [
 		"/dev/urandom",
 		"/etc/resolv.conf",
-		"/lib/x86_64-linux-gnu/libz.so.1",
 		"/lib/x86_64-linux-gnu/libnss_systemd.so.2",
 		"/lib/x86_64-linux-gnu/libcap.so.2",
 		"/lib/x86_64-linux-gnu/libnss_mdns4_minimal.so.2",
-		"/home",
-		"$HOME",
 		"$HOME/.cache",
-		"$$HOME/.cache/deno",
-		"$$PWD/deno",
 		{
-			"real": "$HOME/.cache/deno/dep_analysis_cache_v2",
+			"real": "$HOME/.cache/deno",
 			"writable": true,
 			"prefix": true
-		}, {
-			"real": "$HOME/.cache/deno/v8_code_cache_v2",
-			"writable": true,
-			"prefix": true
-		}, {
-			"real": "$HOME/.cache/deno/node_analysis_cache_v2",
-			"writable": true,
-			"prefix": true
-		}, {
-			"real": "$HOME/.cache/deno/remote",
-			"writable": true,
-			"prefix": true
-		}, {
-			"real": "$HOME/.cache/deno/npm",
-			"writable": true,
+		},
+		{
+			"real": "$PWD/deno",
 			"prefix": true
 		}
 	]
