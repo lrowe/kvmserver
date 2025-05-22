@@ -63,6 +63,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
 
 [[package]]
+name = "kvmserver-examples-rust"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.172"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -233,13 +240,6 @@ dependencies = [
  "socket2",
  "tokio-macros",
  "windows-sys",
-]
-
-[[package]]
-name = "tokio-demo"
-version = "0.1.0"
-dependencies = [
- "tokio",
 ]
 
 [[package]]

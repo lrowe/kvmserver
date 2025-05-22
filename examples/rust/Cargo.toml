@@ -1,7 +1,9 @@
 [package]
-name = "tokio-demo"
+name = "kvmserver-examples-rust"
 version = "0.1.0"
+readme = "README.md"
 edition = "2024"
+publish = false
 
 [dependencies]
 tokio = { version = "1.44.2", features = ["full"] }
