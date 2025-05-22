@@ -138,9 +138,8 @@ void VirtualMachine::begin_warmup_client()
 		fprintf(stderr, "Warmup: No intra connect requests, skipping...\n");
 		return;
 	}
-	struct sockaddr_storage serv_addr;
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	socklen_t serv_addr_len;
+	struct sockaddr_storage serv_addr {};
+	socklen_t serv_addr_len = sizeof(serv_addr);
 	if (getsockname(this->m_tracked_client_fd, (struct sockaddr*)&serv_addr, &serv_addr_len) < 0) {
 		fprintf(stderr, "Warmup: Failed getsockname: %s\n", strerror(errno));
 		return;
@@ -165,7 +164,7 @@ void VirtualMachine::begin_warmup_client()
 	}
 	warmup_threads.reserve(NUM_WARMUP_THREADS);
 	for (int t = 0; t < NUM_WARMUP_THREADS; ++t) {
-		warmup_threads.emplace_back([this, t, &serv_addr, serv_addr_len]()
+		warmup_threads.emplace_back([this, t, serv_addr, serv_addr_len]()
 		{
 			if (config().verbose) {
 				fprintf(stderr, "Warmup: Starting warmup client %d\n", t);
