@@ -5,7 +5,7 @@ local task = require("@lune/task")
 
 local PORT = 8000
 local URL = `http://127.0.0.1:{PORT}`
-local RESPONSE = "Hello, lune!"
+local RESPONSE = "Hello, World!"
 
 -- Serve should get proper path, query, and other request information
 
