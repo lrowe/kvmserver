@@ -26,7 +26,8 @@ $(TARGETS) : % : $(addsuffix %,$(SUBDIRS)) $(addsuffix %,.)
 $(SUBDIRS_TARGETS) :
 	$(MAKE) -C $(@D) $(@F:.%=%)
 
-.build: ;
+.build:
+	deno install
 
 .check:
 	deno check
