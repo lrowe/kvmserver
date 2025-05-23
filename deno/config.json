@@ -4,6 +4,7 @@
 	"filename": "$HOME/.deno/bin/deno",
 	"max_memory": 4200,
 	"executable_heap": true,
+	"clock_gettime_uses_rdtsc": true,
 	"executable_remappings": {
 		"caged_heap": ["0x1000000000", 64],
 		"unknown":    ["0xC00100000", 128]
