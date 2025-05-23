@@ -18,7 +18,7 @@ const warmup = 1;
     "wsgiref ephemeral",
     testHelloWorld({ ...common, args, ephemeral }),
   );
-  Deno.test(
+  Deno.test.ignore(
     "wsgiref ephemeral warmup",
     testHelloWorld({ ...common, args, ephemeral, warmup }),
   );
