@@ -63,7 +63,8 @@ struct Configuration
 	std::vector<NetworkPath> allowed_network_unix;
 	std::vector<NetworkPath> allowed_network_ipv4;
 	std::vector<NetworkPath> allowed_network_ipv6;
-	bool network_allow_all = false; /* Allow all network connections */
+	bool network_allow_connect = false; /* Allow all outgoing network connections */
+	bool network_allow_listen = false; /* Allow all incoming network connections */
 
 	static Configuration FromJsonFile(const std::string& filename);
 };

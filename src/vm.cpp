@@ -154,7 +154,7 @@ VirtualMachine::VirtualMachine(const std::vector<uint8_t>& binary, const Configu
 			return false;
 		}
 		// No match found
-		return m_config.network_allow_all;
+		return m_config.network_allow_connect;
 	});
 	machine().fds().listening_socket_callback =
 	[this] (int vfd, int fd) -> bool {
@@ -697,5 +697,5 @@ bool VirtualMachine::validate_listener(int fd)
 		fprintf(stderr, "Unknown address family: %d\n", addr.ss_family);
 		throw std::runtime_error("Unknown address family");
 	}
-	return false;
+	return m_config.network_allow_listen;
 }

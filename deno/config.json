@@ -25,7 +25,7 @@
 			"port": 6379
 		}
 	],
-	"network_allow_all": false,
+	"network_allow_connect": false,
 	"allowed_paths": [
 		"/dev/urandom",
 		"/etc/resolv.conf",

@@ -38,6 +38,8 @@ struct CommandLineArgs
 	bool allow_read = false;
 	bool allow_write = false;
 	bool allow_env = false;
+	bool allow_connect = false;
+	bool allow_listen = false;
 	uint16_t warmup_requests = 0;
 	std::string config_file;
 	std::string filename;
@@ -48,7 +50,10 @@ const int ALLOW_ALL = 0x100;
 const int ALLOW_READ = 0x101;
 const int ALLOW_WRITE = 0x102;
 const int ALLOW_ENV = 0x103;
-const int GUEST_CWD = 0x104;
+const int ALLOW_NET = 0x104;
+const int ALLOW_CONNECT = 0x105;
+const int ALLOW_LISTEN = 0x106;
+const int GUEST_CWD = 0x110;
 static const struct option longopts[] = {
 	{"program", required_argument, nullptr, 'p'},
 	{"config", required_argument, nullptr, 'c'},
@@ -60,6 +65,9 @@ static const struct option longopts[] = {
 	{"allow-read", no_argument, nullptr, ALLOW_READ},
 	{"allow-write", no_argument, nullptr, ALLOW_WRITE},
 	{"allow-env", no_argument, nullptr, ALLOW_ENV},
+	{"allow-net", no_argument, nullptr, ALLOW_NET},
+	{"allow-connect", no_argument, nullptr, ALLOW_CONNECT},
+	{"allow-listen", no_argument, nullptr, ALLOW_LISTEN},
 	{"cwd", required_argument, nullptr, GUEST_CWD},
 	{nullptr, 0, nullptr, 0}
 };
@@ -78,6 +86,9 @@ static void print_usage(const char* program_name)
 	fprintf(stderr, "  --allow-read             Allow filesystem read access\n");
 	fprintf(stderr, "  --allow-write            Allow filesystem write access\n");
 	fprintf(stderr, "  --allow-env              Allow environment access\n");
+	fprintf(stderr, "  --allow-net              Allow network access\n");
+	fprintf(stderr, "  --allow-connect          Allow outgoing network connect\n");
+	fprintf(stderr, "  --allow-listen           Allow incoming network listen\n");
 	fprintf(stderr, "  --cwd <dir>              Set the guests working directory\n");
 	fprintf(stderr, "A program or configuration file is required in order to be able to host a program.\n");
 }
@@ -110,6 +121,8 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 				args.allow_read = true;
 				args.allow_write = true;
 				args.allow_env = true;
+				args.allow_connect = true;
+				args.allow_listen = true;
 				break;
 			case ALLOW_READ:
 				args.allow_read = true;
@@ -119,6 +132,16 @@ static CommandLineArgs parse_command_line(int argc, char* argv[])
 				break;
 			case ALLOW_ENV:
 				args.allow_env = true;
+				break;
+			case ALLOW_NET:
+				args.allow_connect = true;
+				args.allow_listen = true;
+				break;
+			case ALLOW_CONNECT:
+				args.allow_connect = true;
+				break;
+			case ALLOW_LISTEN:
+				args.allow_listen = true;
 				break;
 			case GUEST_CWD:
 				args.guest_cwd = optarg;
@@ -213,6 +236,12 @@ int main(int argc, char* argv[], char* envp[])
 			config.environ.insert(config.environ.end(), {
 				"LC_TYPE=C", "LC_ALL=C", "USER=root"
 			});
+		}
+		if (args.allow_connect) {
+			config.network_allow_connect = true;
+		}
+		if (args.allow_listen) {
+			config.network_allow_listen = true;
 		}
 		// Print some configuration values
 		if (args.verbose) {

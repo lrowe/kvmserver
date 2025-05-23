@@ -310,7 +310,8 @@ Configuration Configuration::FromJsonFile(const std::string& filename)
 			}
 		}
 		// Allow all network connections
-		config.network_allow_all = json.value("network_allow_all", false);
+		config.network_allow_connect = json.value("network_allow_connect", config.network_allow_connect);
+		config.network_allow_listen = json.value("network_allow_listen", config.network_allow_listen);
 
 		// Warmup requests
 		config.warmup_connect_requests = json.value("warmup_connect_requests", config.warmup_connect_requests);
