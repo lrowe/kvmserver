@@ -5,7 +5,7 @@ const KVMSERVER_COMMAND =
   new URL(import.meta.resolve("../.build/kvmserver")).pathname;
 
 type KvmServerCommandOptions = {
-  program?: string;
+  program: string;
   args?: string[];
   cwd?: string | URL;
   ephemeral?: boolean;
@@ -29,7 +29,7 @@ export class KvmServerCommand {
         : [],
       ...options.allowAll ? ["--allow-all"] : [],
       ...options.ephemeral ? ["--ephemeral"] : [],
-      ...options.program ? ["--program", options.program] : [],
+      options.program,
       "--",
       ...options.args ?? [],
     ];

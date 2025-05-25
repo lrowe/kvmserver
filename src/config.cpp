@@ -1,4 +1,5 @@
 #include "config.hpp"
+#include <CLI/CLI.hpp>
 #include <fstream>
 #include <limits.h>
 #include <nlohmann/json.hpp>
@@ -6,6 +7,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <linux/un.h>
+#include <thread>
 #include <unistd.h>
 
 static std::string apply_dollar_vars(std::string str)
@@ -75,6 +77,207 @@ void add_remappings(const nlohmann::json& json, std::vector<T>& remappings,
 			throw std::runtime_error("Invalid remapping format in configuration file");
 		}
 	}
+}
+
+
+std::string lookup_program(const std::string& program)
+{
+	namespace fs = std::filesystem;
+	if (program.find('/') == std::string::npos) {
+		std::stringstream ss(getenv("PATH"));
+		std::string dirname;
+		while (std::getline(ss, dirname, ':')) {
+			fs::path filepath = (fs::path(dirname) / program).lexically_normal();
+			if (access(filepath.c_str(), X_OK) == 0) {
+				return filepath;
+			}
+		}
+		throw std::invalid_argument("Program not found on path: " + program);
+	}
+	fs::path filepath = fs::absolute(program).lexically_normal();
+	if (access(filepath.c_str(), X_OK) == 0) {
+		return filepath;
+	}
+	throw std::invalid_argument("Program not an executable: " + program);
+}
+
+Configuration Configuration::FromArgs(int argc, char* argv[])
+{
+	Configuration config;
+	CLI::App app;
+
+	uint verbose = 0;
+	bool allow_all;
+	bool allow_net;
+	bool allow_read = false;
+	bool allow_write = false;
+	std::vector<std::string> allow_env;
+	bool allow_connect = false;
+	bool allow_listen = false;
+
+	app.set_config("-c,--config", "kvmserver.toml", "Read a toml file");
+
+	app.add_option("program", config.filename, "Program")->required();
+	app.add_option("args", config.main_arguments, "Program arguments");
+	app.add_option("--cwd", config.current_working_directory, "Set the guests working directory");
+	// TODO: This does not allow env=[] in config file.
+	app.add_option("--env", config.environ, "add an environment variable")->allow_extra_args(false);
+
+	app.add_option("-t,--threads", config.concurrency, "Number of request VMs (0 to use cpu count)")->capture_default_str();
+	app.add_flag("-e,--ephemeral", config.ephemeral, "Use ephemeral VMs");
+	app.add_option("-w,--warmup", config.warmup_connect_requests, "Number of warmup requests")->capture_default_str();;
+	// -vv include syscalls, -vvv also include memory maps
+	app.add_flag("-v,--verbose", verbose, "Enable verbose output");
+
+	app.add_flag("--allow-all", allow_all, "Allow all access")->group("PERMISSION OPTIONS");
+	app.add_flag("--allow-read", allow_read, "Allow filesystem read access")->group("PERMISSION OPTIONS");
+	app.add_flag("--allow-write", allow_write, "Allow filesystem write access")->group("PERMISSION OPTIONS");
+	app.add_flag("--allow-env{*}", allow_env, "Allow access to environment variables. Optionally specify accessible environment variables (e.g. --allow-env=USER,PATH,API_*).")->group("PERMISSION OPTIONS");
+	app.add_flag("--allow-net", allow_all, "Allow network access")->group("PERMISSION OPTIONS");
+	app.add_flag("--allow-connect", allow_read, "Allow outgoing network access")->group("PERMISSION OPTIONS");
+	app.add_flag("--allow-listen", allow_write, "Allow incoming network access")->group("PERMISSION OPTIONS");
+
+	app.add_flag("--clock-rdtsc", config.clock_gettime_uses_rdtsc, "Experimental clock_gettime() w/rdtsc enabled");
+
+	try {
+		app.parse(argc, argv);
+	} catch (const CLI::ParseError &e) {
+    std::exit(app.exit(e));
+	}
+
+	std::cout<<app.config_to_str(true,true);
+	/*printf("Environment: %ld [", config.environ.size());
+		for (const auto& env : config.environ) {
+			printf("%s ", env.c_str());
+		}
+		printf("]\n");*/
+
+	if (verbose >= 1) {
+		config.verbose = true;
+	}
+	if (verbose >= 2) {
+		config.verbose_syscalls = true;
+	}
+	if (verbose >= 3) {
+		config.verbose_pagetable = true;
+	}
+
+	if (allow_all) {
+		allow_read = true;
+		allow_write = true;
+		allow_env.clear();
+		allow_env.emplace_back("*");
+		allow_connect = true;
+		allow_listen = true;
+	}
+	if (allow_net) {
+		allow_connect = true;
+		allow_listen = true;
+	}
+	if (config.concurrency == 0) {
+		config.concurrency = std::thread::hardware_concurrency();
+	}
+	config.filename = lookup_program(config.filename);
+	if (config.current_working_directory.empty()) {
+		char* cwd = get_current_dir_name();
+		config.current_working_directory = cwd;
+		free(cwd);
+	}
+
+	if (allow_write) {
+		config.allowed_paths.push_back(Configuration::VirtualPath {
+			.real_path = "/",
+			.virtual_path = "/",
+			.writable = true,
+			.prefix = true,
+		});
+		config.allowed_paths.push_back(Configuration::VirtualPath {
+			.real_path = config.current_working_directory,
+			.virtual_path = ".",
+			.writable = true,
+			.prefix = true,
+		});
+	}
+	else if (allow_read) {
+		config.allowed_paths.push_back(Configuration::VirtualPath {
+			.real_path = "/",
+			.virtual_path = "/",
+			.writable = false,
+			.prefix = true,
+		});
+		config.allowed_paths.push_back(Configuration::VirtualPath {
+			.real_path = config.current_working_directory,
+			.virtual_path = ".",
+			.writable = false,
+			.prefix = true,
+		});
+	}
+	extern char **environ;
+	for (const auto& names : allow_env) {
+		for (const auto& name : std::views::split(names, ',')) {
+			// XXX ensure name has no = using validator
+			if (name.back() == '*') {
+				for (char** env = environ; *env != nullptr; ++env) {
+					if (strncmp(*env, name.data(), name.size() - 1) == 0) {
+						config.environ.push_back(*env);
+					}
+				}
+			} else {
+				std::string namestring(name.begin(), name.end());
+				config.environ.push_back(namestring + "=" + getenv(namestring.c_str()));
+			}
+		}
+	}
+	// Do we need "LC_TYPE=C", "LC_ALL=C"?
+	if (
+		std::find_if(config.environ.begin(), config.environ.end(),
+			[](auto& value) { return value.starts_with("USER="); }
+		) == config.environ.end()
+	) {
+		config.environ.emplace_back("USER=nobody");
+	}
+	if (allow_connect) {
+		config.network_allow_connect = true;
+	}
+	if (allow_listen) {
+		config.network_allow_listen = true;
+	}
+	/*
+	// Print some configuration values
+	if (verbose) {
+		printf("Filename: %s\n", config.filename.c_str());
+		printf("Concurrency: %u\n", config.concurrency);
+		// Main arguments
+		printf("Main arguments: [");
+		for (const auto& arg : config.main_arguments) {
+			printf("%s ", arg.c_str());
+		}
+		printf("]\n");
+		// Environment variables
+		printf("Environment: [");
+		for (const auto& env : config.environ) {
+			printf("%s ", env.c_str());
+		}
+		printf("]\n");
+		// Allowed paths
+		printf("Current working directory: %s\n",
+			config.current_working_directory.c_str());
+		for (const auto& path : config.allowed_paths) {
+			printf("Allowed Path: %s -> %s%s\n",
+				path.virtual_path.c_str(), path.real_path.c_str(),
+				path.prefix ? " (prefix)" : "");
+		}
+	}*/
+
+	// Raise the memory sizes into megabytes
+	config.max_address_space = config.max_address_space * (1ULL << 20);
+	config.max_main_memory = config.max_main_memory * (1ULL << 20);
+	config.max_req_mem = config.max_req_mem * (1UL << 20);
+	config.limit_req_mem = config.limit_req_mem * (1UL << 20);
+	config.shared_memory = config.shared_memory * (1UL << 20);
+	config.dylink_address_hint = config.dylink_address_hint * (1UL << 20);
+	config.heap_address_hint = config.heap_address_hint * (1UL << 20);
+	return config;
 }
 
 Configuration Configuration::FromJsonFile(const std::string& filename)

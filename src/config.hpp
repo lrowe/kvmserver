@@ -53,7 +53,7 @@ struct Configuration
 	};
 	std::vector<VirtualPath> allowed_paths;
 	std::unordered_map<std::string, size_t> rewrite_path_indices;
-	std::string current_working_directory = "/";
+	std::string current_working_directory;
 
 	struct NetworkPath {
 		struct sockaddr_storage sockaddr;
@@ -65,4 +65,5 @@ struct Configuration
 	bool network_allow_listen = false; /* Allow all incoming network connections */
 
 	static Configuration FromJsonFile(const std::string& filename);
+	static Configuration FromArgs(int argc, char* argv[]);
 };
