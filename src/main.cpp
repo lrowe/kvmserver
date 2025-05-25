@@ -268,9 +268,6 @@ int main(int argc, char* argv[], char* envp[])
 					path.prefix ? " (prefix)" : "");
 			}
 		}
-		if (config.clock_gettime_uses_rdtsc) {
-			fprintf(stderr, "Warning: Experimental clock_gettime() w/rdtsc enabled\n");
-		}
 
 		VirtualMachine::init_kvm();
 

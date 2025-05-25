@@ -1,6 +1,5 @@
 {
 	"filename": "/usr/bin/node",
-	"ephemeral": true,
 	"concurrency": 2,
 	"max_boot_time": 24.0,
 	"address_space": 16000,
@@ -11,14 +10,24 @@
 		"--single-threaded", "$PWD/node/main.js"
 	],
 	"current_working_directory": "$PWD/node",
+	"allowed_networks": [
+		{
+			"address": "127.0.0.1",
+			"port": 8000,
+			"listen": true
+		}
+	],
 	"allowed_paths": [
 		"/dev/urandom",
 		"/etc/resolv.conf",
 		"/etc/ssl/openssl.cnf",
-		"$$PWD",
 		{
 			"virtual": "/proc/self/maps",
 			"real": "$PWD/node/maps.fake"
+		}, {
+			"virtual": "$PWD/node",
+			"real": "$PWD/node",
+			"prefix": true
 		}
 	]
 }

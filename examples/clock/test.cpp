@@ -1,6 +1,5 @@
 #include <cstdio>
 #include <time.h>
-static constexpr int VCPU_MIGRATION_DIFF = 10; // time differences between vCPUs
 
 int main()
 {
@@ -19,13 +18,19 @@ int main()
 		}
 		const __uint128_t nanos_now = static_cast<__uint128_t>(ts.tv_sec) * 1000000000UL + ts.tv_nsec;
 		const __uint128_t nanos_last = static_cast<__uint128_t>(last_ts.tv_sec) * 1000000000UL + last_ts.tv_nsec;
-		if (nanos_now+VCPU_MIGRATION_DIFF < nanos_last) {
-			//fprintf(stderr, "Clock went backwards: now=%ld.%09ld last=%ld.%09ld\n",
-			//	ts.tv_sec, ts.tv_nsec, last_ts.tv_sec, last_ts.tv_nsec);
-			//return 1;
+		if (nanos_now < nanos_last) {
+			fprintf(stderr, "Clock went backwards: now=%ld.%09ld last=%ld.%09ld\n",
+				ts.tv_sec, ts.tv_nsec, last_ts.tv_sec, last_ts.tv_nsec);
+			return 1;
 		} else if (nanos_now < nanos_last) {
 			differences++;
 			difference_ns += static_cast<size_t>(nanos_last - nanos_now);
+		} else if (ts.tv_nsec >= 1000000000UL) {
+			fprintf(stderr, "Invalid nanoseconds value: %ld.%09ld\n", ts.tv_sec, ts.tv_nsec);
+			return 1;
+		} else if (ts.tv_sec < 0 || ts.tv_nsec < 0) {
+			fprintf(stderr, "Negative timestamp: %ld.%09ld\n", ts.tv_sec, ts.tv_nsec);
+			return 1;
 		}
 		last_ts = ts;
 	}

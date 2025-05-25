@@ -36,7 +36,6 @@ VirtualMachine::VirtualMachine(const std::vector<uint8_t>& binary, const Configu
 		.split_hugepages = false,
 		.relocate_fixed_mmap = config.relocate_fixed_mmap,
 		.executable_heap = config.executable_heap,
-		.clock_gettime_uses_rdtsc = config.clock_gettime_uses_rdtsc,
 		.hugepages_arena_size = config.hugepage_arena_size,
 	}),
 	m_config(config),
@@ -184,7 +183,6 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 		.max_cow_mem = other.config().max_req_mem,
 		.split_hugepages = other.config().split_hugepages,
 		.relocate_fixed_mmap = other.config().relocate_fixed_mmap,
-		.clock_gettime_uses_rdtsc = other.config().clock_gettime_uses_rdtsc,
 		.hugepages_arena_size = other.config().hugepage_arena_size,
 	  }),
 	  m_config(other.m_config),
@@ -410,6 +408,16 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 					continue;
 				}
 			}
+		} else if (getenv("BENCH")) {
+			struct timespec ts;
+			clock_gettime(CLOCK_MONOTONIC, &ts);
+			machine().run();
+			struct timespec ts2;
+			clock_gettime(CLOCK_MONOTONIC, &ts2);
+			const long elapsed_ns = (ts2.tv_sec - ts.tv_sec) * 1'000'000'000L +
+				(ts2.tv_nsec - ts.tv_nsec);
+			printf("[Bench] Runtime: %ldns (%ldms)\n",
+				elapsed_ns, elapsed_ns / 1'000'000L);
 		} else if (just_one_vm) {
 			// If running with just one VM, let it run forever
 			machine().run();
