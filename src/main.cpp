@@ -1,10 +1,9 @@
 #include <atomic>
 #include <cstdio>
-#include <filesystem>
+#include "mmap_file.hpp"
 #include <getopt.h>
 #include <sstream>
 #include <thread>
-#include <unistd.h>
 #include "vm.hpp"
 extern std::vector<uint8_t> file_loader(const std::string& filename);
 static std::array<std::atomic<uint64_t>, 64> reset_counters;
@@ -272,10 +271,10 @@ int main(int argc, char* argv[], char* envp[])
 		VirtualMachine::init_kvm();
 
 		// Read the binary file
-		const std::vector<uint8_t> binary = file_loader(config.filename);
+		MmapFile binary_file(config.filename);
 
 		// Create a VirtualMachine instance
-		VirtualMachine vm(binary, config);
+		VirtualMachine vm(binary_file.view(), config);
 		// Initialize the VM by running through main()
 		// and then do a warmup, if required
 		const bool just_one_vm = (config.concurrency == 1 && !config.ephemeral);
@@ -287,6 +286,7 @@ int main(int argc, char* argv[], char* envp[])
 			fprintf(stderr, "The program did not wait for requests\n");
 			return 1;
 		}
+		binary_file.dontneed(); // Lazily drop pages from the file
 
 		// Get warmup time (if any)
 		const std::string warmup_time = (init.warmup_time.count() > 0) ?

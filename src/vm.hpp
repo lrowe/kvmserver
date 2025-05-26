@@ -40,7 +40,7 @@ struct VirtualMachine
 	void warmup();
 	void open_debugger();
 
-	VirtualMachine(const std::vector<uint8_t>& binary, const Configuration& config);
+	VirtualMachine(std::string_view binary, const Configuration& config);
 	VirtualMachine(const VirtualMachine& other, unsigned reqid);
 	~VirtualMachine();
 	struct InitResult {
@@ -59,7 +59,7 @@ private:
 
 	tinykvm::Machine m_machine;
 	const Configuration& m_config;
-	const std::vector<uint8_t>& m_original_binary;
+	std::string_view m_original_binary;
 	BinaryType m_binary_type = BinaryType::Static;
 	unsigned m_reqid = 0;
 	bool m_ephemeral = false;

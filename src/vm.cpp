@@ -12,18 +12,19 @@
 extern std::vector<uint8_t> file_loader(const std::string& filename);
 static std::vector<uint8_t> ld_linux_x86_64_so;
 
-static const std::vector<uint8_t>& select_main_binary(const std::vector<uint8_t>& program_binary)
+static const std::string_view select_main_binary(std::string_view program_binary)
 {
 	const tinykvm::DynamicElf dyn_elf = tinykvm::is_dynamic_elf(
 		std::string_view{(const char *)program_binary.data(), program_binary.size()});
 	if (dyn_elf.has_interpreter()) {
 		// Add the dynamic linker as first argument
-		return ld_linux_x86_64_so;
+		return std::string_view((const char*)ld_linux_x86_64_so.data(),
+			ld_linux_x86_64_so.size());
 	}
 	return program_binary;
 }
 
-VirtualMachine::VirtualMachine(const std::vector<uint8_t>& binary, const Configuration& config)
+VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& config)
 	: m_machine(select_main_binary(binary), tinykvm::MachineOptions{
 		.max_mem = config.max_address_space,
 		.max_cow_mem = 0UL,
