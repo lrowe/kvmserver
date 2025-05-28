@@ -231,7 +231,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_flag("--allow-all", allow_all, "Allow all access")->group("Permissions");
 	app.add_flag("--allow-read", allow_read, "Allow filesystem read access")->group("Permissions");
 	app.add_flag("--allow-write", allow_write, "Allow filesystem write access")->group("Permissions");
-	app.add_flag("--allow-env{*}", allow_env, "Allow access to environment variables. Optionally specify accessible environment variables (e.g. --allow-env=USER,PATH,API_*).")->group("Permissions");
+	app.add_flag("--allow-env{*}", allow_env, "Allow access to environment variables. Optionally specify accessible environment variables (e.g. --allow-env=USER,PATH,API_*).")->delimiter(',')->group("Permissions");
 	app.add_flag("--allow-net", allow_net, "Allow network access")->delimiter(',')->group("Permissions");
 	app.add_flag("--allow-connect", allow_connect, "Allow outgoing network access")->delimiter(',')->group("Permissions");
 	app.add_flag("--allow-listen", allow_listen, "Allow incoming network access")->delimiter(',')->group("Permissions");
@@ -326,19 +326,17 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		});
 	}
 	extern char **environ;
-	for (const auto& names : allow_env) {
-		for (const auto& name : std::views::split(names, ',')) {
-			// XXX ensure name has no = using validator
-			if (name.back() == '*') {
-				for (char** env = environ; *env != nullptr; ++env) {
-					if (strncmp(*env, name.data(), name.size() - 1) == 0) {
-						config.environ.push_back(*env);
-					}
+	for (const auto& name : allow_env) {
+		// XXX ensure name has no = using validator
+		if (name.back() == '*') {
+			for (char** env = environ; *env != nullptr; ++env) {
+				if (strncmp(*env, name.data(), name.size() - 1) == 0) {
+					config.environ.push_back(*env);
 				}
-			} else {
-				std::string namestring(name.begin(), name.end());
-				config.environ.push_back(namestring + "=" + getenv(namestring.c_str()));
 			}
+		} else {
+			std::string namestring(name.begin(), name.end());
+			config.environ.push_back(namestring + "=" + getenv(namestring.c_str()));
 		}
 	}
 	// Do we need "LC_TYPE=C", "LC_ALL=C"?
