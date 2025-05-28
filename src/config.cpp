@@ -203,7 +203,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 
 	app.add_option("-t,--threads", config.concurrency, "Number of request VMs (0 to use cpu count)")->capture_default_str();
 	app.add_flag("-e,--ephemeral", config.ephemeral, "Use ephemeral VMs");
-	app.add_option("-w,--warmup", config.warmup_connect_requests, "Number of warmup requests")->capture_default_str();;
+	app.add_option("-w,--warmup", config.warmup_connect_requests, "Number of warmup requests")->capture_default_str();
 	// -vv include syscalls, -vvv also include memory maps
 	app.add_flag("-v,--verbose", verbose, "Enable verbose output");
 
@@ -215,7 +215,24 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_flag("--allow-connect{}", allow_read, "Allow outgoing network access")->group("PERMISSION OPTIONS");
 	app.add_flag("--allow-listen{}", allow_write, "Allow incoming network access")->group("PERMISSION OPTIONS");
 
-	app.add_flag("--clock-rdtsc", config.clock_gettime_uses_rdtsc, "Experimental clock_gettime() w/rdtsc enabled");
+	app.add_option("--max-boot-time", config.max_boot_time)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_option("--max-request-time", config.max_req_time)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_option("--max-main-memory", config.max_main_memory)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_option("--max-address-space", config.max_address_space)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_option("--max-request-memory", config.max_req_mem)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_option("--limit-request-memory", config.limit_req_mem)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_option("--shared-memory", config.shared_memory)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_option("--dylink-address-hint", config.dylink_address_hint)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_option("--heap-address-hint", config.heap_address_hint)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_option("--hugepage-arena-size", config.hugepage_arena_size)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_option("--hugepage-requests-arena", config.hugepage_requests_arena)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_flag("!--no-executable-heap", config.executable_heap)->capture_default_str()->group("ADVANCED OPTIONS");
+	app.add_flag("--clock-gettime-uses-rdtsc", config.clock_gettime_uses_rdtsc)->group("ADVANCED OPTIONS");
+	app.add_flag("--hugepages", config.hugepages)->group("ADVANCED OPTIONS");
+	app.add_flag("!--no-split-hugepages", config.split_hugepages)->group("ADVANCED OPTIONS");
+	app.add_flag("--transparent-hugepages", config.transparent_hugepages)->group("ADVANCED OPTIONS");
+	app.add_flag("!--no-relocate-fixed-mmap", config.relocate_fixed_mmap)->group("ADVANCED OPTIONS");
+	app.add_flag("!--no-ephemeral-keep-working-memory", config.ephemeral_keep_working_memory)->group("ADVANCED OPTIONS");
 
 	try {
 		app.parse(argc, argv);
@@ -377,6 +394,9 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 				path.prefix ? " (prefix)" : "");
 		}
 	}*/
+
+	// The address space must at least be as large as the main memory
+	config.max_address_space = std::max(config.max_address_space, config.max_main_memory);
 
 	// Raise the memory sizes into megabytes
 	config.max_address_space = config.max_address_space * (1ULL << 20);
