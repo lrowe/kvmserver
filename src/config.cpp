@@ -1,5 +1,6 @@
 #include "config.hpp"
 #include <CLI/CLI.hpp>
+#include <format>
 #include <fstream>
 #include <limits.h>
 #include <nlohmann/json.hpp>
@@ -101,19 +102,96 @@ std::string lookup_program(const std::string& program)
 	throw std::invalid_argument("Program not an executable: " + program);
 }
 
+
+static void parse_address(
+	const std::string_view value,
+	std::vector<struct sockaddr_storage>& allowed_ipv4,
+	std::vector<struct sockaddr_storage>& allowed_ipv6
+) {
+	uint port = 0;
+	std::string address(value);
+	size_t maybe_colon = address.find_last_not_of("0123456789");
+	if (maybe_colon != std::string::npos && value[maybe_colon] == ':') {
+		uint parsed_port;
+		try {
+			port = std::stoul(address.substr(maybe_colon + 1, std::string::npos));
+		} catch (...) {
+			throw std::runtime_error(std::format("Invalid port: {}", value));
+		}
+		address = address.substr(0, maybe_colon);
+	}
+
+	if (port > std::numeric_limits<in_port_t>::max()) {
+		throw std::runtime_error(std::format("Invalid port: {}", value));
+	}
+
+	// IPv6
+	if (address.front() == '[') {
+		if (address.back() != ']') {
+			throw std::runtime_error(std::format("Invalid ipv6 address: ", value));
+		}
+		std::string address(address.substr(1, value.length() - 2));
+		auto& storage = allowed_ipv6.emplace_back((struct sockaddr_storage) {});
+		sockaddr_in6* addr = reinterpret_cast<sockaddr_in6*>(&storage);
+		addr->sin6_family = AF_INET6;
+		if (inet_pton(AF_INET6, address.c_str(), &addr->sin6_addr) <= 0) {
+			throw std::runtime_error(std::format("Invalid IPv6 address: {}", value));
+		}
+		addr->sin6_port = htons(port);
+		return;
+	}
+
+	// IPv4
+	in_addr sin_addr;
+	if (inet_pton(AF_INET, address.c_str(), &sin_addr) > 0) {
+		auto& storage = allowed_ipv4.emplace_back((struct sockaddr_storage) {});
+		sockaddr_in* addr = reinterpret_cast<sockaddr_in*>(&storage);
+		addr->sin_family = AF_INET;
+		addr->sin_addr = sin_addr;
+		addr->sin_port = htons(port);
+		return;
+	}
+
+	// Resolve the domain name to an IP address
+	struct addrinfo hints = {};
+	struct addrinfo* res;
+	hints.ai_family = AF_UNSPEC; // IPv4 or IPv6
+	hints.ai_socktype = SOCK_STREAM; // TCP
+	if (getaddrinfo(address.c_str(), nullptr, &hints, &res) != 0) {
+		throw std::runtime_error(std::format("Invalid domain name: {}", value));
+	}
+	if (res->ai_family == AF_INET) {
+		auto& storage = allowed_ipv4.emplace_back((struct sockaddr_storage) {});
+		sockaddr_in* addr = reinterpret_cast<sockaddr_in*>(&storage);
+		addr->sin_family = AF_INET;
+		addr->sin_addr = reinterpret_cast<sockaddr_in*>(res)->sin_addr;
+		addr->sin_port = htons(port);
+	} else if (res->ai_family == AF_INET6) {
+		auto& storage = allowed_ipv6.emplace_back((struct sockaddr_storage) {});
+		sockaddr_in6* addr = reinterpret_cast<sockaddr_in6*>(&storage);
+		addr->sin6_family = AF_INET6;
+		addr->sin6_addr = reinterpret_cast<sockaddr_in6*>(res)->sin6_addr;
+		addr->sin6_port = htons(port);
+	} else {
+		throw std::runtime_error(std::format("Invalid address family for domain: {}", value));
+	}
+	freeaddrinfo(res);
+	return;
+}
+
 Configuration Configuration::FromArgs(int argc, char* argv[])
 {
 	Configuration config;
-	CLI::App app;
+	CLI::App app{"kvmserver"};
 
 	uint verbose = 0;
 	bool allow_all;
-	bool allow_net;
 	bool allow_read = false;
 	bool allow_write = false;
 	std::vector<std::string> allow_env;
-	bool allow_connect = false;
-	bool allow_listen = false;
+	std::vector<std::string> allow_net;
+	std::vector<std::string> allow_connect;
+	std::vector<std::string> allow_listen;
 
 	app.set_config("-c,--config", "kvmserver.toml", "Read a toml file");
 
@@ -133,9 +211,9 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_flag("--allow-read", allow_read, "Allow filesystem read access")->group("PERMISSION OPTIONS");
 	app.add_flag("--allow-write", allow_write, "Allow filesystem write access")->group("PERMISSION OPTIONS");
 	app.add_flag("--allow-env{*}", allow_env, "Allow access to environment variables. Optionally specify accessible environment variables (e.g. --allow-env=USER,PATH,API_*).")->group("PERMISSION OPTIONS");
-	app.add_flag("--allow-net", allow_all, "Allow network access")->group("PERMISSION OPTIONS");
-	app.add_flag("--allow-connect", allow_read, "Allow outgoing network access")->group("PERMISSION OPTIONS");
-	app.add_flag("--allow-listen", allow_write, "Allow incoming network access")->group("PERMISSION OPTIONS");
+	app.add_flag("--allow-net{}", allow_all, "Allow network access")->group("PERMISSION OPTIONS");
+	app.add_flag("--allow-connect{}", allow_read, "Allow outgoing network access")->group("PERMISSION OPTIONS");
+	app.add_flag("--allow-listen{}", allow_write, "Allow incoming network access")->group("PERMISSION OPTIONS");
 
 	app.add_flag("--clock-rdtsc", config.clock_gettime_uses_rdtsc, "Experimental clock_gettime() w/rdtsc enabled");
 
@@ -167,12 +245,12 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		allow_write = true;
 		allow_env.clear();
 		allow_env.emplace_back("*");
-		allow_connect = true;
-		allow_listen = true;
+		allow_net.clear();
+		allow_net.emplace_back("");
 	}
-	if (allow_net) {
-		allow_connect = true;
-		allow_listen = true;
+	if (!allow_net.empty()) {
+		allow_connect.insert(allow_connect.begin(), allow_net.begin(), allow_net.end());
+		allow_listen.insert(allow_listen.begin(), allow_net.begin(), allow_net.end());
 	}
 	if (config.concurrency == 0) {
 		config.concurrency = std::thread::hardware_concurrency();
@@ -236,11 +314,42 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	) {
 		config.environ.emplace_back("USER=nobody");
 	}
-	if (allow_connect) {
-		config.network_allow_connect = true;
+
+	for (const auto& values : allow_connect) {
+		if (values == "") {
+			config.allowed_connect_ipv4.clear();
+			auto& storage = config.allowed_connect_ipv4.emplace_back((struct sockaddr_storage) {});
+			storage.ss_family = AF_INET;
+			config.allowed_connect_ipv6.clear();
+			storage = config.allowed_connect_ipv6.emplace_back((struct sockaddr_storage) {});
+			storage.ss_family = AF_INET6;
+			break;
+		}
+		for (const auto value : std::views::split(values, ',')) {
+			parse_address(
+				std::string_view(value.begin(), value.end()),
+				config.allowed_connect_ipv4,
+				config.allowed_connect_ipv6
+			);
+		}	
 	}
-	if (allow_listen) {
-		config.network_allow_listen = true;
+	for (const auto& values : allow_listen) {
+		if (values == "") {
+			config.allowed_listen_ipv4.clear();
+			auto& storage = config.allowed_listen_ipv4.emplace_back((struct sockaddr_storage) {});
+			storage.ss_family = AF_INET;
+			config.allowed_listen_ipv6.clear();
+			storage = config.allowed_listen_ipv6.emplace_back((struct sockaddr_storage) {});
+			storage.ss_family = AF_INET6;
+			break;
+		}
+		for (const auto value : std::views::split(values, ',')) {
+			parse_address(
+				std::string_view(value.begin(), value.end()),
+				config.allowed_listen_ipv4,
+				config.allowed_listen_ipv6
+			);
+		}	
 	}
 	/*
 	// Print some configuration values
@@ -278,254 +387,4 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	config.dylink_address_hint = config.dylink_address_hint * (1UL << 20);
 	config.heap_address_hint = config.heap_address_hint * (1UL << 20);
 	return config;
-}
-
-Configuration Configuration::FromJsonFile(const std::string& filename)
-{
-	Configuration config;
-	nlohmann::json json;
-
-	if (!filename.empty()) {
-		// Load the JSON file and parse it
-		std::ifstream file(filename);
-		if (!file.is_open()) {
-			throw std::runtime_error("Could not open configuration file: " + filename);
-		}
-
-		// Allow comments in the JSON file
-		try {
-			json = json.parse(file, nullptr, false, true);
-		} catch (const nlohmann::json::parse_error& e) {
-			fprintf(stderr, "Error parsing JSON file: %s\n", filename.c_str());
-			fprintf(stderr, "Error: %s\n", e.what());
-			throw std::runtime_error("Invalid JSON format in configuration file: " + filename);
-		}
-	} else {
-		json = nlohmann::json::object();
-	}
-
-	// Parse the JSON data into the Configuration object
-	try {
-		config.concurrency = json.value("concurrency", config.concurrency);
-		// The program filename may be specified on command line
-		config.filename = json.value("filename", config.filename);
-		config.filename = apply_dollar_vars(config.filename);
-
-		/* Most of these fields are optional. */
-		config.max_boot_time = json.value("max_boot_time", config.max_boot_time);
-		config.max_req_time = json.value("max_req_time", config.max_req_time);
-
-		config.max_main_memory = json.value("max_memory", config.max_main_memory);
-		// The address space must at least be as large as the main memory
-		config.max_address_space = json.value("address_space", config.max_address_space);
-		config.max_address_space = std::max(config.max_address_space, config.max_main_memory);
-
-		if (json.contains("max_request_memory")) {
-			config.max_req_mem = json["max_request_memory"].get<uint32_t>();
-		}
-		if (json.contains("limit_req_mem")) {
-			config.limit_req_mem = json["limit_req_mem"].get<uint32_t>();
-		}
-		if (json.contains("shared_memory")) {
-			config.shared_memory = json["shared_memory"].get<uint32_t>();
-		}
-		config.dylink_address_hint = json.value("dylink_address_hint", config.dylink_address_hint);
-		config.heap_address_hint = json.value("heap_address_hint", config.heap_address_hint);
-		config.hugepage_arena_size = json.value("hugepage_arena_size", config.hugepage_arena_size);
-		config.hugepage_requests_arena = json.value("hugepage_requests_arena", config.hugepage_requests_arena);
-		config.executable_heap = json.value("executable_heap", config.executable_heap);
-		config.clock_gettime_uses_rdtsc = json.value("clock_gettime_uses_rdtsc", config.clock_gettime_uses_rdtsc);
-		config.hugepages = json.value("hugepages", config.hugepages);
-		config.split_hugepages = json.value("split_hugepages", config.split_hugepages);
-		config.transparent_hugepages = json.value("transparent_hugepages", config.transparent_hugepages);
-		config.relocate_fixed_mmap = json.value("relocate_fixed_mmap", config.relocate_fixed_mmap);
-		config.ephemeral = json.value("ephemeral", config.ephemeral);
-		config.ephemeral_keep_working_memory = json.value("ephemeral_keep_working_memory", config.ephemeral_keep_working_memory);
-		config.verbose = json.value("verbose", config.verbose);
-		config.verbose_syscalls = json.value("verbose_syscalls", config.verbose_syscalls);
-		config.verbose_pagetable = json.value("verbose_pagetable", config.verbose_pagetable);
-
-		if (json.contains("environment")) {
-			for (const auto& env : json["environment"]) {
-				std::string env_str = env.get<std::string>();
-				env_str = apply_dollar_vars(env_str);
-				config.environ.push_back(std::move(env_str));
-			}
-		}
-
-		if (json.contains("main_arguments")) {
-			for (const auto& arg : json["main_arguments"]) {
-				std::string arg_str = arg.get<std::string>();
-				arg_str = apply_dollar_vars(arg_str);
-				config.main_arguments.push_back(std::move(arg_str));
-			}
-		}
-
-		if (json.contains("remappings")) {
-			add_remappings(json["remappings"], config.vmem_remappings,
-				true, true, false); // +R, +W, -X
-		}
-		if (json.contains("executable_remappings")) {
-			add_remappings(json["executable_remappings"], config.vmem_remappings,
-				true, true, true); // +R, +W, +X
-		}
-
-		if (json.contains("allowed_paths")) {
-			for (const auto& path : json["allowed_paths"]) {
-				VirtualPath vpath;
-				if (path.is_string()) {
-					// If the path is a string, it is a real path
-					vpath.real_path = path.get<std::string>();
-					vpath.real_path = apply_dollar_vars(vpath.real_path);
-					vpath.virtual_path = vpath.real_path;
-					config.allowed_paths.push_back(vpath);
-					continue;
-				}
-				if (!path.contains("real")) {
-					fprintf(stderr, "Missing required field 'real' in allowed_paths in configuration file: %s\n", filename.c_str());
-					throw std::runtime_error("Missing required field 'real' in allowed_paths in configuration file: " + filename);
-				}
-				if (!path.at("real").is_string()) {
-					fprintf(stderr, "Invalid type for 'real' in allowed_paths in configuration file: %s\n", filename.c_str());
-					throw std::runtime_error("Invalid type for 'real' in allowed_paths in configuration file: " + filename);
-				}
-				vpath.real_path = path["real"].get<std::string>();
-				vpath.real_path = apply_dollar_vars(vpath.real_path);
-				if (path.contains("virtual")) {
-					vpath.virtual_path = path["virtual"].get<std::string>();
-					// Record the index of the virtual path in the allowed paths
-					// that contains a specific virtual path.
-					config.rewrite_path_indices.insert_or_assign(
-						vpath.virtual_path, config.allowed_paths.size());
-				} else {
-					vpath.virtual_path = vpath.real_path;
-				}
-				vpath.virtual_path = path.value("virtual_path", vpath.real_path);
-				vpath.writable = path.value("writable", false);
-				vpath.symlink = path.value("symlink", false);
-				vpath.usable_in_fork = path.value("usable_in_fork", false);
-				vpath.prefix = path.value("prefix", false);
-				config.allowed_paths.push_back(vpath);
-			}
-		}
-
-		// Resolve the current working directory
-		char cwd[PATH_MAX];
-		if (getcwd(cwd, sizeof(cwd)) != nullptr) {
-			config.current_working_directory = cwd;
-		}
-		config.current_working_directory = json.value("current_working_directory", config.current_working_directory);
-		config.current_working_directory = apply_dollar_vars(config.current_working_directory);
-
-		// Allowed Unix paths and socket addresses
-		if (json.contains("allowed_networks"))
-		{
-			for (const auto& path : json["allowed_networks"]) {
-				NetworkPath net_path;
-				if (path.contains("domain"))
-				{
-					const std::string address = path["domain"].get<std::string>();
-					// Resolve the domain name to an IP address
-					struct addrinfo hints;
-					struct addrinfo* res;
-					memset(&hints, 0, sizeof(hints));
-					hints.ai_family = AF_UNSPEC; // IPv4 or IPv6
-					hints.ai_socktype = SOCK_STREAM; // TCP
-					if (getaddrinfo(address.c_str(), nullptr, &hints, &res) != 0) {
-						fprintf(stderr, "Invalid domain name in allowed_network in configuration file: %s\n", filename.c_str());
-						throw std::runtime_error("Invalid domain name in allowed_network in configuration file: " + filename);
-					}
-					if (res->ai_family == AF_INET) {
-						std::memcpy(&net_path.sockaddr, res->ai_addr, sizeof(struct sockaddr_in));
-						config.allowed_network_ipv4.push_back(net_path);
-					} else if (res->ai_family == AF_INET6) {
-						std::memcpy(&net_path.sockaddr, res->ai_addr, sizeof(struct sockaddr_in6));
-						config.allowed_network_ipv6.push_back(net_path);
-					} else {
-						fprintf(stderr, "Invalid address family in allowed_network in configuration file: %s\n", filename.c_str());
-						throw std::runtime_error("Invalid address family in allowed_network in configuration file: " + filename);
-					}
-					freeaddrinfo(res);
-				}
-				else if (path.contains("address"))
-				{
-					// This is a socket address
-					if (path["address"].is_string()) {
-						// Check if it's an IPv4 or IPv6 address
-						std::string address = path["address"].get<std::string>();
-						if (address.find('.') != std::string::npos
-							&& address.find_first_of("0123456789") != std::string::npos) {
-							// IPv4 address
-							struct sockaddr_in addr;
-							addr.sin_family = AF_INET;
-							if (inet_pton(AF_INET, address.c_str(), &addr.sin_addr) <= 0) {
-								fprintf(stderr, "Invalid IPv4 address in allowed_network in configuration file: %s\n", filename.c_str());
-								throw std::runtime_error("Invalid IPv4 address in allowed_network in configuration file: " + filename);
-							}
-							if (path.contains("port")) {
-								// Set the port for the IPv4 address
-								addr.sin_port = htons(path["port"].get<uint16_t>());
-							}
-							net_path.sockaddr = *(struct sockaddr_storage *)&addr;
-							net_path.is_listenable = path.value("listen", false);
-							config.allowed_network_ipv4.push_back(net_path);
-						}
-						else if (address.find(':') != std::string::npos)
-						{
-							// IPv6 address
-							struct sockaddr_in6 addr;
-							addr.sin6_family = AF_INET6;
-							if (inet_pton(AF_INET6, address.c_str(), &addr.sin6_addr) <= 0) {
-								fprintf(stderr, "Invalid IPv6 address in allowed_network in configuration file: %s\n", filename.c_str());
-								throw std::runtime_error("Invalid IPv6 address in allowed_network in configuration file: " + filename);
-							}
-							if (path.contains("port")) {
-								// Set the port for the IPv6 address
-								addr.sin6_port = htons(path["port"].get<uint16_t>());
-							}
-							net_path.sockaddr = *(struct sockaddr_storage *)&addr;
-							net_path.is_listenable = path.value("listen", false);
-							config.allowed_network_ipv6.push_back(net_path);
-						}
-						else
-						{
-							fprintf(stderr, "Invalid address format in allowed_network in configuration file: %s\n", filename.c_str());
-							throw std::runtime_error("Invalid address format in allowed_network in configuration file: " + filename);
-						}
-					} else {
-						fprintf(stderr, "Invalid type for 'address' in allowed_network in configuration file: %s\n", filename.c_str());
-						throw std::runtime_error("Invalid type for 'address' in allowed_network in configuration file: " + filename);
-					}
-				}
-			}
-		}
-		// Allow all network connections
-		config.network_allow_connect = json.value("network_allow_connect", config.network_allow_connect);
-		config.network_allow_listen = json.value("network_allow_listen", config.network_allow_listen);
-
-		// Warmup requests
-		config.warmup_connect_requests = json.value("warmup_connect_requests", config.warmup_connect_requests);
-		config.warmup_intra_connect_requests = json.value("warmup_intra_connect_requests", config.warmup_intra_connect_requests);
-		config.warmup_path = json.value("warmup_path", config.warmup_path); // HTTP path
-
-		// Raise the memory sizes into megabytes
-		config.max_address_space = config.max_address_space * (1ULL << 20);
-		config.max_main_memory = config.max_main_memory * (1ULL << 20);
-		config.max_req_mem = config.max_req_mem * (1UL << 20);
-		config.limit_req_mem = config.limit_req_mem * (1UL << 20);
-		config.shared_memory = config.shared_memory * (1UL << 20);
-		config.dylink_address_hint = config.dylink_address_hint * (1UL << 20);
-		config.heap_address_hint = config.heap_address_hint * (1UL << 20);
-		// As a catch-all we will make everything verbose when VERBOSE=1
-		if (getenv("VERBOSE") != nullptr) {
-			config.verbose = true;
-			config.verbose_syscalls = true;
-		}
-		return config;
-
-	} catch (const nlohmann::json::exception& e) {
-		fprintf(stderr, "Error parsing JSON file: %s\n", filename.c_str());
-		fprintf(stderr, "Error: %s\n", e.what());
-		throw std::runtime_error("Invalid JSON format in configuration file: " + filename);
-	}
 }

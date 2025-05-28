@@ -55,15 +55,10 @@ struct Configuration
 	std::unordered_map<std::string, size_t> rewrite_path_indices;
 	std::string current_working_directory;
 
-	struct NetworkPath {
-		struct sockaddr_storage sockaddr;
-		bool is_listenable = false;
-	};
-	std::vector<NetworkPath> allowed_network_ipv4;
-	std::vector<NetworkPath> allowed_network_ipv6;
-	bool network_allow_connect = false; /* Allow all outgoing network connections */
-	bool network_allow_listen = false; /* Allow all incoming network connections */
+	std::vector<struct sockaddr_storage> allowed_connect_ipv4;
+	std::vector<struct sockaddr_storage> allowed_listen_ipv4;
+	std::vector<struct sockaddr_storage> allowed_connect_ipv6;
+	std::vector<struct sockaddr_storage> allowed_listen_ipv6;
 
-	static Configuration FromJsonFile(const std::string& filename);
 	static Configuration FromArgs(int argc, char* argv[]);
 };

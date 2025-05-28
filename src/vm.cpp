@@ -24,6 +24,60 @@ static const std::string_view select_main_binary(std::string_view program_binary
 	return program_binary;
 }
 
+
+static bool validate_network_access(
+	const struct sockaddr_storage& addr,
+	const std::vector<struct sockaddr_storage>& allowed_ipv4,
+	const std::vector<struct sockaddr_storage>& allowed_ipv6
+) {
+	// IPv4
+	if (addr.ss_family == AF_INET)
+	{
+		// Compare the socket address with the allowed address
+		const struct sockaddr_in* addr_ipv4 =
+			reinterpret_cast<const struct sockaddr_in*>(&addr);
+		for (auto& allowed : allowed_ipv4) {
+			const struct sockaddr_in* addr_allowed =
+				reinterpret_cast<const struct sockaddr_in*>(&allowed);
+			if (addr_ipv4->sin_addr.s_addr == addr_allowed->sin_addr.s_addr ||
+					addr_allowed->sin_addr.s_addr == 0) {
+				// The socket address is allowed
+				if (addr_ipv4->sin_port == addr_allowed->sin_port ||
+					addr_allowed->sin_port == 0) {
+					// The socket port is allowed
+					return true;
+				}
+			} // in_addr
+		}
+		// No match found
+		return false;
+	}
+	// IPv6
+	if (addr.ss_family == AF_INET6)
+	{
+		const struct sockaddr_in6* addr_ipv6 =
+			reinterpret_cast<const struct sockaddr_in6*>(&addr);
+		for (auto& allowed : allowed_ipv6) {
+			const struct sockaddr_in6* addr_allowed =
+				reinterpret_cast<const struct sockaddr_in6*>(&allowed);
+			if (memcmp(&addr_allowed->sin6_addr, &in6addr_any, sizeof(struct in6_addr)) == 0 ||
+					memcmp(&addr_allowed->sin6_addr, &addr_ipv6->sin6_addr, sizeof(struct in6_addr)) == 0) {
+				// The socket address is allowed
+				if (addr_allowed->sin6_port == 0 ||
+					addr_ipv6->sin6_port == addr_allowed->sin6_port) {
+					// The socket port is allowed
+					return true;
+				}
+			} // in6_addr
+		}
+		// No match found
+		return false;
+	}
+	// Unknown address family
+	fprintf(stderr, "Unknown address family: %d\n", addr.ss_family);
+	return false;
+}
+
 VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& config)
 	: m_machine(select_main_binary(binary), tinykvm::MachineOptions{
 		.max_mem = config.max_address_space,
@@ -97,12 +151,9 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 	machine().fds().set_connect_socket_callback(
 	[this] (int fd, struct sockaddr_storage& addr) -> bool {
 		(void)fd;
-		const bool is_unix = addr.ss_family == AF_UNIX;
-		const bool is_ipv4 = addr.ss_family == AF_INET;
-		const bool is_ipv6 = addr.ss_family == AF_INET6;
 
-		// Validate unix socket path against allow-read and allow-write
-		if (is_unix)
+		// Validate unix socket path against allow-read
+		if (addr.ss_family == AF_UNIX)
 		{
 			// Compare the socket path with the allowed path
 			const struct sockaddr_un *addr_unix =
@@ -113,49 +164,8 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 		}
 
 		// Validate network addresses against allow-connect
-		else if (is_ipv4)
-		{
-			// Compare the socket address with the allowed address
-			const struct sockaddr_in* addr_ipv4 =
-				reinterpret_cast<const struct sockaddr_in*>(&addr);
-			for (auto& tpath : m_config.allowed_network_ipv4) {
-				const struct sockaddr_in* addr_allowed =
-					reinterpret_cast<const struct sockaddr_in*>(&tpath.sockaddr);
-				if (addr_ipv4->sin_addr.s_addr == addr_allowed->sin_addr.s_addr) {
-					// The socket address is allowed
-					if (addr_ipv4->sin_port == addr_allowed->sin_port ||
-						addr_allowed->sin_port == 0) {
-						// The socket port is allowed
-						return true;
-					}
-				} // in_addr
-			}
-		}
-		else if (is_ipv6)
-		{
-			const struct sockaddr_in6* addr_ipv6 =
-				reinterpret_cast<const struct sockaddr_in6*>(&addr);
-			for (auto& tpath : m_config.allowed_network_ipv6) {
-				const struct sockaddr_in6* addr_allowed =
-					reinterpret_cast<const struct sockaddr_in6*>(&tpath.sockaddr);
-				if (std::memcmp(&addr_ipv6->sin6_addr, &addr_allowed->sin6_addr, sizeof(addr_ipv6->sin6_addr)) == 0) {
-					// The socket address is allowed
-					if (addr_ipv6->sin6_port == addr_allowed->sin6_port ||
-						addr_allowed->sin6_port == 0) {
-						// The socket port is allowed
-						return true;
-					}
-				} // in6_addr
-			}
-		}
-		else
-		{
-			// Unknown address family
-			fprintf(stderr, "Unknown address family: %d\n", addr.ss_family);
-			return false;
-		}
-		// No match found
-		return m_config.network_allow_connect;
+		return validate_network_access(
+			addr, m_config.allowed_connect_ipv4, m_config.allowed_connect_ipv6);
 	});
 	machine().fds().listening_socket_callback =
 	[this] (int vfd, int fd) -> bool {
@@ -642,12 +652,9 @@ bool VirtualMachine::validate_listener(int fd)
 		fprintf(stderr, "Listener getsockname() failed: %s\n", strerror(errno));
 		throw std::runtime_error("getsockname() failed");
 	}
-	const bool is_unix = addr.ss_family == AF_UNIX;
-	const bool is_ipv4 = addr.ss_family == AF_INET;
-	const bool is_ipv6 = addr.ss_family == AF_INET6;
 
 	// Validate unix socket path against allow-read and allow-write
-	if (is_unix)
+	if (addr.ss_family == AF_UNIX)
 	{
 		// Compare the socket path with the allowed path
 		const struct sockaddr_un *addr_unix =
@@ -658,54 +665,7 @@ bool VirtualMachine::validate_listener(int fd)
 			machine().fds().is_readable_path(sun_path);
 	}
 
-	// Validate network addresses against allow-listen
-	if (is_ipv4)
-	{
-		const struct sockaddr_in *addr_ipv4 =
-			reinterpret_cast<const struct sockaddr_in *>(&addr);
-		for (auto& tpath : m_config.allowed_network_ipv4)
-		{
-			const struct sockaddr_in *addr_allowed =
-				reinterpret_cast<const struct sockaddr_in *>(&tpath.sockaddr);
-			if (addr_ipv4->sin_addr.s_addr == addr_allowed->sin_addr.s_addr
-				&& tpath.is_listenable)
-			{
-				// The socket address is allowed
-				if (addr_ipv4->sin_port == addr_allowed->sin_port
-					|| addr_allowed->sin_port == 0)
-				{
-					// The socket port is allowed
-					return true;
-				}
-			} // in_addr
-		}
-	}
-	else if (is_ipv6)
-	{
-		const struct sockaddr_in6 *addr_ipv6 =
-			reinterpret_cast<const struct sockaddr_in6 *>(&addr);
-		for (auto& tpath : m_config.allowed_network_ipv6)
-		{
-			const struct sockaddr_in6 *addr_allowed =
-				reinterpret_cast<const struct sockaddr_in6 *>(&tpath.sockaddr);
-			if (std::memcmp(&addr_ipv6->sin6_addr, &addr_allowed->sin6_addr, sizeof(addr_ipv6->sin6_addr)) == 0
-				&& tpath.is_listenable)
-			{
-				// The socket address is allowed
-				if (addr_ipv6->sin6_port == addr_allowed->sin6_port
-					|| addr_allowed->sin6_port == 0)
-				{
-					// The socket port is allowed
-					return true;
-				}
-			} // in6_addr
-		}
-	} // ipv4/ipv6
-	else
-	{
-		// Unknown address family
-		fprintf(stderr, "Unknown address family: %d\n", addr.ss_family);
-		throw std::runtime_error("Unknown address family");
-	}
-	return m_config.network_allow_listen;
+	// Validate network addresses against allow listen lists
+	return validate_network_access(
+		addr, m_config.allowed_listen_ipv4, m_config.allowed_listen_ipv6);
 }
