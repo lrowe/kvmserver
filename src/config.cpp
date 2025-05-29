@@ -1,6 +1,5 @@
 #include "config.hpp"
 #include <CLI/CLI.hpp>
-#include <format>
 #include <fstream>
 #include <limits.h>
 #include <nlohmann/json.hpp>
@@ -73,13 +72,13 @@ std::string lookup_program(const std::string& program)
 				return filepath;
 			}
 		}
-		throw std::invalid_argument("Program not found on path: " + program);
+		throw CLI::ValidationError("program: Not found on path", program);
 	}
 	fs::path filepath = fs::absolute(program).lexically_normal();
 	if (access(filepath.c_str(), X_OK) == 0) {
 		return filepath;
 	}
-	throw std::invalid_argument("Program not an executable: " + program);
+	throw CLI::ValidationError("program: Not an executable", program);
 }
 
 
@@ -105,13 +104,13 @@ static bool parse_addresses(
 			try {
 				port = std::stoul(address.substr(maybe_colon + 1, std::string::npos));
 			} catch (...) {
-				throw std::runtime_error(std::format("Invalid port: {}", value));
+				throw CLI::ValidationError("Invalid port", value);
 			}
 			address = address.substr(0, maybe_colon);
 		}
 
 		if (port > std::numeric_limits<in_port_t>::max()) {
-			throw std::runtime_error(std::format("Invalid port: {}", value));
+			throw CLI::ValidationError("Invalid port", value);
 		}
 
 		if (address == "") {
@@ -134,14 +133,14 @@ static bool parse_addresses(
 		// IPv6
 		if (address.front() == '[') {
 			if (address.back() != ']') {
-				throw std::runtime_error(std::format("Invalid ipv6 address: ", value));
+				throw CLI::ValidationError("Invalid ipv6 address", value);
 			}
 			std::string address(address.substr(1, value.length() - 2));
 			auto& storage = allowed_ipv6.emplace_back((struct sockaddr_storage) {});
 			sockaddr_in6* addr = reinterpret_cast<sockaddr_in6*>(&storage);
 			addr->sin6_family = AF_INET6;
 			if (inet_pton(AF_INET6, address.c_str(), &addr->sin6_addr) <= 0) {
-				throw std::runtime_error(std::format("Invalid IPv6 address: {}", value));
+				throw CLI::ValidationError("Invalid IPv6 address", value);
 			}
 			addr->sin6_port = htons(port);
 			return false;
@@ -164,7 +163,7 @@ static bool parse_addresses(
 		hints.ai_family = AF_UNSPEC; // IPv4 or IPv6
 		hints.ai_socktype = SOCK_STREAM; // TCP
 		if (getaddrinfo(address.c_str(), nullptr, &hints, &head) != 0) {
-			throw std::runtime_error(std::format("Invalid domain name: {}", value));
+			throw CLI::ValidationError("Invalid domain name", value);
 		}
 		for (struct addrinfo* res = head; res != nullptr; res = res->ai_next) {
 			if (res->ai_family == AF_INET) {
@@ -192,7 +191,7 @@ static bool parse_addresses(
 					printf("Resolved %s to %s\n", address.c_str(), found.c_str());
 				}
 			} else {
-				throw std::runtime_error(std::format("Invalid address family for domain: {}", value));
+				throw CLI::ValidationError("Invalid address family for domain", value);
 			}
 		}
 		freeaddrinfo(head);
@@ -205,8 +204,6 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	Configuration config;
 	CLI::App app{"kvmserver"};
 
-	uint verbose = 0;
-	bool allow_all = false;
 	bool allow_read = false;
 	bool allow_write = false;
 	std::vector<std::string> allow_env;
@@ -226,15 +223,31 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_flag("-e,--ephemeral", config.ephemeral, "Use ephemeral VMs");
 	app.add_option("-w,--warmup", config.warmup_connect_requests, "Number of warmup requests")->capture_default_str();
 	// -vv include syscalls, -vvv also include memory maps
-	app.add_flag("-v,--verbose", verbose, "Enable verbose output");
-
-	app.add_flag("--allow-all", allow_all, "Allow all access")->group("Permissions");
-	app.add_flag("--allow-read", allow_read, "Allow filesystem read access")->group("Permissions");
-	app.add_flag("--allow-write", allow_write, "Allow filesystem write access")->group("Permissions");
-	app.add_flag("--allow-env{*}", allow_env, "Allow access to environment variables. Optionally specify accessible environment variables (e.g. --allow-env=USER,PATH,API_*).")->delimiter(',')->group("Permissions");
-	app.add_flag("--allow-net", allow_net, "Allow network access")->delimiter(',')->group("Permissions");
-	app.add_flag("--allow-connect", allow_connect, "Allow outgoing network access")->delimiter(',')->group("Permissions");
-	app.add_flag("--allow-listen", allow_listen, "Allow incoming network access")->delimiter(',')->group("Permissions");
+	app.add_flag("-v,--verbose", [&](uint verbose) {
+		if (verbose >= 1) {
+			config.verbose = true;
+		}
+		if (verbose >= 2) {
+			config.verbose_syscalls = true;
+		}
+		if (verbose >= 3) {
+			config.verbose_pagetable = true;
+		}
+	}, "Enable verbose output");
+	app.add_flag("--allow-all", [&](bool allow_all) {
+		if (allow_all) {
+			allow_read = true;
+			allow_write = true;
+			allow_env.emplace_back("*");
+			allow_net.emplace_back("true");
+		}
+	}, "Allow all access")->group("Permissions");
+	app.add_flag("--allow-read", allow_read, "Allow filesystem read access")->excludes("--allow-all")->group("Permissions");
+	app.add_flag("--allow-write", allow_write, "Allow filesystem write access")->excludes("--allow-all")->group("Permissions");
+	app.add_flag("--allow-env{*}", allow_env, "Allow access to environment variables. Optionally specify accessible environment variables (e.g. --allow-env=USER,PATH,API_*).")->delimiter(',')->excludes("--allow-all")->group("Permissions");
+	app.add_flag("--allow-net", allow_net, "Allow network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
+	app.add_flag("--allow-connect", allow_connect, "Allow outgoing network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
+	app.add_flag("--allow-listen", allow_listen, "Allow incoming network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
 
 	app.add_option("--max-boot-time", config.max_boot_time)->capture_default_str()->group("Advanced");
 	app.add_option("--max-request-time", config.max_req_time)->capture_default_str()->group("Advanced");
@@ -255,7 +268,106 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_flag("!--no-relocate-fixed-mmap", config.relocate_fixed_mmap)->group("Advanced");
 	app.add_flag("!--no-ephemeral-keep-working-memory", config.ephemeral_keep_working_memory)->group("Advanced");
 
-	CLI::Option* print_config = app.add_flag("--print-config", "Print config and exit without running program");
+	CLI::Option* print_config = app.add_flag("--print-config", "Print config and exit without running program")->configurable(false);
+
+	app.callback([&]() {
+		config.filename = lookup_program(config.filename);
+
+		if (config.concurrency == 0) {
+			config.concurrency = std::thread::hardware_concurrency();
+		}
+		if (config.current_working_directory.empty()) {
+			char* cwd = get_current_dir_name();
+			config.current_working_directory = cwd;
+			free(cwd);
+		}
+
+		if (allow_write) {
+			config.allowed_paths.push_back(Configuration::VirtualPath {
+				.real_path = "/",
+				.virtual_path = "/",
+				.writable = true,
+				.prefix = true,
+			});
+			config.allowed_paths.push_back(Configuration::VirtualPath {
+				.real_path = config.current_working_directory,
+				.virtual_path = ".",
+				.writable = true,
+				.prefix = true,
+			});
+		}
+		else if (allow_read) {
+			config.allowed_paths.push_back(Configuration::VirtualPath {
+				.real_path = "/",
+				.virtual_path = "/",
+				.writable = false,
+				.prefix = true,
+			});
+			config.allowed_paths.push_back(Configuration::VirtualPath {
+				.real_path = config.current_working_directory,
+				.virtual_path = ".",
+				.writable = false,
+				.prefix = true,
+			});
+		}
+		extern char **environ;
+		for (const auto& name : allow_env) {
+			// XXX ensure name has no = using validator
+			if (name.back() == '*') {
+				for (char** env = environ; *env != nullptr; ++env) {
+					if (strncmp(*env, name.data(), name.size() - 1) == 0) {
+						config.environ.push_back(*env);
+					}
+				}
+			} else {
+				std::string namestring(name.begin(), name.end());
+				config.environ.push_back(namestring + "=" + getenv(namestring.c_str()));
+			}
+		}
+		// Do we need "LC_TYPE=C", "LC_ALL=C"?
+		if (
+			std::find_if(config.environ.begin(), config.environ.end(),
+				[](auto& value) { return value.starts_with("USER="); }
+			) == config.environ.end()
+		) {
+			config.environ.emplace_back("USER=nobody");
+		}
+
+		bool skip_allow_connect_listen = parse_addresses(
+			allow_net,
+			config.allowed_connect_ipv4,
+			config.allowed_connect_ipv6,
+			config.verbose
+		);
+		config.allowed_listen_ipv4 = config.allowed_connect_ipv4;
+		config.allowed_listen_ipv6 = config.allowed_connect_ipv6;
+		if (!skip_allow_connect_listen) {
+			parse_addresses(
+				allow_connect,
+				config.allowed_connect_ipv4,
+				config.allowed_connect_ipv6,
+				config.verbose
+			);
+			parse_addresses(
+				allow_listen,
+				config.allowed_listen_ipv4,
+				config.allowed_listen_ipv6,
+				config.verbose
+			);
+		}
+
+		// The address space must at least be as large as the main memory
+		config.max_address_space = std::max(config.max_address_space, config.max_main_memory);
+
+		// Raise the memory sizes into megabytes
+		config.max_address_space = config.max_address_space * (1ULL << 20);
+		config.max_main_memory = config.max_main_memory * (1ULL << 20);
+		config.max_req_mem = config.max_req_mem * (1UL << 20);
+		config.limit_req_mem = config.limit_req_mem * (1UL << 20);
+		config.shared_memory = config.shared_memory * (1UL << 20);
+		config.dylink_address_hint = config.dylink_address_hint * (1UL << 20);
+		config.heap_address_hint = config.heap_address_hint * (1UL << 20);
+	});
 
 	try {
 		app.parse(argc, argv);
@@ -264,149 +376,9 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	}
 
 	if (*print_config) {
-		app.remove_option(print_config);
 		std::cout<<app.config_to_str(false, true);
 		std::exit(0);
 	}
 
-	if (verbose >= 1) {
-		config.verbose = true;
-	}
-	if (verbose >= 2) {
-		config.verbose_syscalls = true;
-	}
-	if (verbose >= 3) {
-		config.verbose_pagetable = true;
-	}
-
-	if (allow_all) {
-		allow_read = true;
-		allow_write = true;
-		allow_env.clear();
-		allow_env.emplace_back("*");
-		allow_net.clear();
-		allow_net.emplace_back("true");
-	}
-	if (config.concurrency == 0) {
-		config.concurrency = std::thread::hardware_concurrency();
-	}
-	config.filename = lookup_program(config.filename);
-	if (config.current_working_directory.empty()) {
-		char* cwd = get_current_dir_name();
-		config.current_working_directory = cwd;
-		free(cwd);
-	}
-
-	if (allow_write) {
-		config.allowed_paths.push_back(Configuration::VirtualPath {
-			.real_path = "/",
-			.virtual_path = "/",
-			.writable = true,
-			.prefix = true,
-		});
-		config.allowed_paths.push_back(Configuration::VirtualPath {
-			.real_path = config.current_working_directory,
-			.virtual_path = ".",
-			.writable = true,
-			.prefix = true,
-		});
-	}
-	else if (allow_read) {
-		config.allowed_paths.push_back(Configuration::VirtualPath {
-			.real_path = "/",
-			.virtual_path = "/",
-			.writable = false,
-			.prefix = true,
-		});
-		config.allowed_paths.push_back(Configuration::VirtualPath {
-			.real_path = config.current_working_directory,
-			.virtual_path = ".",
-			.writable = false,
-			.prefix = true,
-		});
-	}
-	extern char **environ;
-	for (const auto& name : allow_env) {
-		// XXX ensure name has no = using validator
-		if (name.back() == '*') {
-			for (char** env = environ; *env != nullptr; ++env) {
-				if (strncmp(*env, name.data(), name.size() - 1) == 0) {
-					config.environ.push_back(*env);
-				}
-			}
-		} else {
-			std::string namestring(name.begin(), name.end());
-			config.environ.push_back(namestring + "=" + getenv(namestring.c_str()));
-		}
-	}
-	// Do we need "LC_TYPE=C", "LC_ALL=C"?
-	if (
-		std::find_if(config.environ.begin(), config.environ.end(),
-			[](auto& value) { return value.starts_with("USER="); }
-		) == config.environ.end()
-	) {
-		config.environ.emplace_back("USER=nobody");
-	}
-
-	bool skip_allow_connect_listen = parse_addresses(
-		allow_net,
-		config.allowed_connect_ipv4,
-		config.allowed_connect_ipv6,
-		config.verbose
-	);
-	config.allowed_listen_ipv4 = config.allowed_connect_ipv4;
-	config.allowed_listen_ipv6 = config.allowed_connect_ipv6;
-	if (!skip_allow_connect_listen) {
-		parse_addresses(
-			allow_connect,
-			config.allowed_connect_ipv4,
-			config.allowed_connect_ipv6,
-			config.verbose
-		);
-		parse_addresses(
-			allow_listen,
-			config.allowed_listen_ipv4,
-			config.allowed_listen_ipv6,
-			config.verbose
-		);
-	}
-	/*
-	// Print some configuration values
-	if (verbose) {
-		printf("Filename: %s\n", config.filename.c_str());
-		printf("Concurrency: %u\n", config.concurrency);
-		// Main arguments
-		printf("Main arguments: [");
-		for (const auto& arg : config.main_arguments) {
-			printf("%s ", arg.c_str());
-		}
-		printf("]\n");
-		// Environment variables
-		printf("Environment: [");
-		for (const auto& env : config.environ) {
-			printf("%s ", env.c_str());
-		}
-		printf("]\n");
-		// Allowed paths
-		printf("Current working directory: %s\n",
-			config.current_working_directory.c_str());
-		for (const auto& path : config.allowed_paths) {
-			printf("Allowed Path: %s -> %s%s\n",
-				path.virtual_path.c_str(), path.real_path.c_str(),
-				path.prefix ? " (prefix)" : "");
-		}
-	}*/
-
-	// The address space must at least be as large as the main memory
-	config.max_address_space = std::max(config.max_address_space, config.max_main_memory);
-
-	// Raise the memory sizes into megabytes
-	config.max_address_space = config.max_address_space * (1ULL << 20);
-	config.max_main_memory = config.max_main_memory * (1ULL << 20);
-	config.max_req_mem = config.max_req_mem * (1UL << 20);
-	config.limit_req_mem = config.limit_req_mem * (1UL << 20);
-	config.shared_memory = config.shared_memory * (1UL << 20);
-	config.dylink_address_hint = config.dylink_address_hint * (1UL << 20);
-	config.heap_address_hint = config.heap_address_hint * (1UL << 20);
 	return config;
 }
