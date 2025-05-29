@@ -261,7 +261,6 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_option("--hugepage-arena-size", config.hugepage_arena_size)->capture_default_str()->group("Advanced");
 	app.add_option("--hugepage-requests-arena", config.hugepage_requests_arena)->capture_default_str()->group("Advanced");
 	app.add_flag("!--no-executable-heap", config.executable_heap)->capture_default_str()->group("Advanced");
-	app.add_flag("--clock-gettime-uses-rdtsc", config.clock_gettime_uses_rdtsc)->group("Advanced");
 	app.add_flag("--hugepages", config.hugepages)->group("Advanced");
 	app.add_flag("!--no-split-hugepages", config.split_hugepages)->group("Advanced");
 	app.add_flag("--transparent-hugepages", config.transparent_hugepages)->group("Advanced");
