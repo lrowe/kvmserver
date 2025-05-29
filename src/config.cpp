@@ -2,7 +2,6 @@
 #include <CLI/CLI.hpp>
 #include <fstream>
 #include <limits.h>
-#include <nlohmann/json.hpp>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -12,51 +11,76 @@
 #include <ranges>
 
 template <typename T>
-void add_remappings(const nlohmann::json& json, std::vector<T>& remappings,
-	bool allow_read, bool allow_write, bool allow_execute)
+void add_remapping(const std::string& remap, std::vector<T>& remappings)
 {
-	for (const auto& remap : json) {
-		tinykvm::VirtualRemapping remapping;
-		// Physical is usually 0x0, which means allocate from guest heap
-		remapping.phys = 0x0;
-		if (remap.is_array()) {
-			// Remapping is an array of "0xADDRESS" and size pairs
-			// Eg. ["0x100000000": 64] indicating a 64mb remapping
-			std::string address = remap.at(0).get<std::string>();
-			if (address.find("0x") != std::string::npos) {
-				remapping.virt = std::stoull(address, nullptr, 16);
-			} else {
-				remapping.virt = std::stoull(address);
+		tinykvm::VirtualRemapping remapping = remappings.emplace_back((tinykvm::VirtualRemapping) {});
+		auto parts = std::views::split(remap, ':');
+		auto it = parts.begin();
+		if (it == parts.end()) {
+			throw CLI::ValidationError("too few parts", remap);
+		}
+		std::string item((*it).begin(), (*it).end());
+		try {
+			remapping.virt = std::stoull(item, nullptr, 0);
+		} catch (const std::invalid_argument& e) {
+			throw CLI::ValidationError("invalid argument (virt)", remap);
+		} catch (const std::out_of_range& e) {
+			throw CLI::ValidationError("out of range (virt)", remap);
+		}
+		++it;
+		if (it == parts.end()) {
+			throw CLI::ValidationError("too few parts", remap);
+		}
+		item = std::string((*it).begin(), (*it).end());
+		try {
+			remapping.size = std::stoull(item, nullptr, 0) * (1UL << 20); // Convert MB to bytes
+		} catch (const std::invalid_argument& e) {
+			throw CLI::ValidationError("invalid argument (size)", remap);
+		} catch (const std::out_of_range& e) {
+			throw CLI::ValidationError("out of range (size)", remap);
+		}
+		++it;
+		if (it == parts.end()) {
+			remapping.writable = true;
+			return;
+		}
+		item = std::string((*it).begin(), (*it).end());
+		if (item.find_first_not_of("0123456789") != 0) {
+			// Physical is usually the default 0x0, which means allocate from guest heap
+			try {
+				remapping.phys = std::stoull(item, nullptr, 0);
+			} catch (const std::invalid_argument& e) {
+				throw CLI::ValidationError("invalid argument (phys)", remap);
+			} catch (const std::out_of_range& e) {
+				throw CLI::ValidationError("out of range (phys)", remap);
 			}
-			// The size is the second element in the array
-			remapping.size = remap.at(1).get<uint64_t>() * (1UL << 20); // Convert MB to bytes
-			// Set the permissions
-			remapping.writable = allow_write;
-			remapping.executable = allow_execute;
-			remappings.push_back(remapping);
-		}
-		else if (remap.is_object())
-		{
-			// Remapping is an object with "virtual", "size", "executable", "writable" etc.
-			// There are always virtual and size fields
-			remapping.virt = remap.at("virtual").get<uint64_t>();
-			remapping.size = remap.at("size").get<uint64_t>() * (1UL << 20); // Convert MB to bytes
-			if (remap.contains("physical")) {
-				// This should be *very* rare
-				remapping.phys = remap["physical"].get<uint64_t>();
+			++it;
+			if (it == parts.end()) {
+				remapping.writable = true;
+				return;
 			}
-			// In this case we get the permissions explicitly from the JSON
-			remapping.executable = remap.value("executable", false);
-			remapping.writable = remap.value("writable", false);
-			remappings.push_back(remapping);
+			item = std::string((*it).begin(), (*it).end());
 		}
-		else {
-			// Print the whole object for debugging
-			fprintf(stderr, "Invalid remapping format in configuration:\n");
-			fprintf(stderr, "%s\n", remap.dump(4).c_str());
-			throw std::runtime_error("Invalid remapping format in configuration file");
+		size_t i = 0;
+		if (item.length() > i && item[i] == 'r') {
+			// ignore;
+			i++;
 		}
-	}
+		if (item.length() > i && item[i] == 'w') {
+			remapping.writable = true;
+			i++;
+		}
+		if (item.length() > i && item[i] == 'x') {
+			remapping.executable = true;
+			i++;
+		}
+		if (i != item.length()) {
+			throw CLI::ValidationError("invalid argument (rwx)", remap);
+		}
+		++it;
+		if (it != parts.end()) {
+			throw CLI::ValidationError("too many parts", remap);
+		}
 }
 
 
@@ -81,8 +105,6 @@ std::string lookup_program(const std::string& program)
 	throw CLI::ValidationError("program: Not an executable", program);
 }
 
-
-// Return value indicates whether to break out of loop
 static bool parse_addresses(
 	const std::vector<std::string>& config,
 	std::vector<struct sockaddr_storage>& allowed_ipv4,
@@ -266,6 +288,14 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_flag("--transparent-hugepages", config.transparent_hugepages)->group("Advanced");
 	app.add_flag("!--no-relocate-fixed-mmap", config.relocate_fixed_mmap)->group("Advanced");
 	app.add_flag("!--no-ephemeral-keep-working-memory", config.ephemeral_keep_working_memory)->group("Advanced");
+
+	app.add_option("--remapping", "virt:size(mb)[:phys=0][:r?w?x?=rw]")
+		->group("Advanced")
+		->delimiter(',')
+		->expected(CLI::detail::expected_max_vector_size)
+		->each([&](const std::string& remap) {
+			add_remapping(remap, config.vmem_remappings);
+		});
 
 	CLI::Option* print_config = app.add_flag("--print-config", "Print config and exit without running program")->configurable(false);
 
