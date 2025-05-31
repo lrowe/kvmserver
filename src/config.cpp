@@ -231,12 +231,12 @@ static void ensure_path(
 	if (path.is_relative()) {
 		path = std::filesystem::current_path() / path;
 	}
-	path = path.lexically_normal();
+	path = (path / "").lexically_normal().parent_path();
 	if (!symlink_path.empty()) {
 		if (symlink_path.is_relative()) {
 			symlink_path = std::filesystem::current_path() / path;
 		}
-		symlink_path = path.lexically_normal();
+		symlink_path = (symlink_path / "").lexically_normal().parent_path();
 	}
 	auto it = allowed_paths.find(path);
 	if (it == allowed_paths.end()) {

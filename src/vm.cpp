@@ -35,7 +35,7 @@ const std::optional<Configuration::VirtualPath> lookup_allowed_path(
 	if (path.is_relative()) {
 		path = std::filesystem::path(cwd) / path;
 	}
-	path = path.lexically_normal();
+	path = (path / "").lexically_normal().parent_path();
 	// Find first key strictly greater than path, e.g.
 	// { /foo: true, /foo/bar: true, /qux: true }.upper_bound(/foo/baz) -> /qux
 	auto it = allowed_paths.upper_bound(path);
