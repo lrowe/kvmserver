@@ -166,7 +166,7 @@ static bool parse_addresses(
 				throw CLI::ValidationError("Invalid IPv6 address", value);
 			}
 			addr->sin6_port = htons(port);
-			return false;
+			continue;
 		}
 
 		// IPv4
