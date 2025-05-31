@@ -1,9 +1,6 @@
 [submodule "ext/tinykvm"]
 	path = ext/tinykvm
 	url = https://github.com/libriscv/tinykvm.git
-[submodule "ext/json"]
-	path = ext/json
-	url = https://github.com/nlohmann/json.git
 [submodule "ext/CLI11"]
 	path = ext/CLI11
 	url = https://github.com/CLIUtils/CLI11.git
