@@ -27,9 +27,10 @@ static const std::string_view select_main_binary(std::string_view program_binary
 	return program_binary;
 }
 
-const std::optional<Configuration::VirtualPath> lookup_allowed_path(
+static bool lookup_allowed_path(
 	std::string& pathinout, const std::string& cwd,
-	const std::map<std::filesystem::path, Configuration::VirtualPath, Configuration::ComparePathSegments>& allowed_paths
+	const std::map<std::filesystem::path, Configuration::VirtualPath, Configuration::ComparePathSegments>& allowed_paths,
+	std::function<bool(const Configuration::VirtualPath&)> extract
 ) {
 	std::filesystem::path path(pathinout);
 	if (path.is_relative()) {
@@ -43,14 +44,17 @@ const std::optional<Configuration::VirtualPath> lookup_allowed_path(
 		--it; // Previous key is either the path or shares a common prefix, e.g. /foo/bar.
 		auto [first_it, path_it] = std::mismatch(it->first.begin(), it->first.end(), path.begin(), path.end());
 		if (first_it == it->first.end()) {
-			// If that key is itself a prefix return the real_path plus the remainder of path
-			pathinout = std::accumulate(path_it, path.end(), it->second.real_path, std::divides{});
-			return it->second;
+			if (extract(it->second)) {
+				// If that key is itself a prefix return the real_path plus the remainder of path
+				pathinout = std::accumulate(path_it, path.end(), it->second.real_path, std::divides{});
+				return true;
+			}
+			--path_it;
 		}
 		// otherwise lookup the common prefix
 		it = allowed_paths.upper_bound(std::accumulate(path.begin(), path_it, std::filesystem::path("/"), std::divides{}));
 	}
-	return std::nullopt; // no prefix found
+	return false; // no prefix found
 }
 
 static bool validate_network_access(
@@ -140,13 +144,13 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 	// Add a single writable file simply called 'state'
 	machine().fds().set_open_writable_callback(
 	[&] (std::string& path) -> bool {
-		auto vpath = lookup_allowed_path(path, machine().fds().current_working_directory(), config.allowed_paths);
-		return vpath && vpath->writable;
+		return lookup_allowed_path(path, machine().fds().current_working_directory(),
+			config.allowed_paths, [](const Configuration::VirtualPath& vpath) { return vpath.writable; });
 	});
 	machine().fds().set_open_readable_callback(
 	[&] (std::string& path) -> bool {
-		auto vpath = lookup_allowed_path(path, machine().fds().current_working_directory(), config.allowed_paths);
-		return vpath && vpath->readable;
+		return lookup_allowed_path(path, machine().fds().current_working_directory(),
+			config.allowed_paths, [](const Configuration::VirtualPath& vpath) { return vpath.readable; });
 	});
 	machine().fds().set_connect_socket_callback(
 	[this] (int fd, struct sockaddr_storage& addr) -> bool {
@@ -174,8 +178,14 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 
 	machine().fds().set_resolve_symlink_callback(
 	[&] (std::string& path) -> bool {
-		auto vpath = lookup_allowed_path(path, machine().fds().current_working_directory(), config.allowed_paths);
-		return vpath && vpath->symlink;
+		bool symlink = false;
+		lookup_allowed_path(path, machine().fds().current_working_directory(),
+			config.allowed_paths, [&](const Configuration::VirtualPath& vpath) {
+				symlink = vpath.symlink;
+				// stop iteration here
+				return true;
+		});
+		return symlink;
 	});
 }
 VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
