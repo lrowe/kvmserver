@@ -1,9 +1,9 @@
 #pragma once
+#include <filesystem>
+#include <map>
 #include <string>
 #include <sys/socket.h> // for sockaddr_storage
 #include <tinykvm/common.hpp>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 struct Configuration
@@ -42,16 +42,35 @@ struct Configuration
 
 	std::vector<tinykvm::VirtualRemapping> vmem_remappings;
 
+	struct ComparePathSegments {
+			// Sort paths so that /foo/bar < /foo./bar even though '.' < '/'
+			bool operator()(const std::filesystem::path& left, const std::filesystem::path& right) const {
+				auto [left_it, right_it] = std::mismatch(left.begin(), left.end(), right.begin(), right.end());
+				if (left_it == left.end())
+					return right_it != right.end();
+				if (right_it == right.end())
+					return false;
+				return *left_it < *right_it;
+			};
+	};
+
 	struct VirtualPath {
 		std::string real_path;
 		std::string virtual_path; /* Path inside the VM, optional */
+		bool readable = false;
 		bool writable = false;
 		bool symlink = false; /* Treated as a symlink path, to be resolved */
-		bool usable_in_fork = false;
-		bool prefix = false;
 	};
-	std::vector<VirtualPath> allowed_paths;
-	std::unordered_map<std::string, size_t> rewrite_path_indices;
+
+	friend std::ostream& operator<<(std::ostream& os, const VirtualPath& v) {
+		os<< "VirtualPath{ .real_path="<<v.real_path
+			<< "; .virtual_path=" << v.virtual_path
+			<< "; " << (v.readable ? "r": "") << (v.writable ? "w": "") << (v.symlink ? "s": "")
+			<< " }";
+    return os;
+	}
+
+	std::map<std::filesystem::path, VirtualPath, ComparePathSegments> allowed_paths;
 	std::string current_working_directory;
 
 	std::vector<struct sockaddr_storage> allowed_connect_ipv4;

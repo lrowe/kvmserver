@@ -2,7 +2,10 @@
 
 #include "settings.hpp"
 #include <cstring>
+#include <filesystem>
 #include <netinet/in.h>
+#include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <sys/poll.h>
 #include <sys/signal.h>
@@ -24,6 +27,37 @@ static const std::string_view select_main_binary(std::string_view program_binary
 	return program_binary;
 }
 
+const std::optional<Configuration::VirtualPath> lookup_allowed_path(
+	std::string& pathinout, const std::string& cwd,
+	const std::map<std::filesystem::path, Configuration::VirtualPath, Configuration::ComparePathSegments>& allowed_paths
+) {
+	//printf("lookup_allowed_path %s\n", pathinout.c_str());
+	std::filesystem::path path(pathinout);
+	if (path.is_relative()) {
+		path = std::filesystem::path(cwd) / path;
+	}
+	path = path.lexically_normal();
+	// { /foo: true, /foo/bar: true, /foo/qux: true }.lower_bound(/foo/baz) -> /foo/qux
+	auto it = allowed_paths.lower_bound(path);
+	if (it != allowed_paths.end() && it->first == path) {
+		// exact match
+		pathinout = it->second.real_path;
+		return it->second;
+	}
+	std::filesystem::path::iterator path_before = path.end();
+	while (it != allowed_paths.begin())	{
+		--it; // /foo/bar
+		auto [first_it, path_it] = std::mismatch(it->first.begin(), it->first.end(), path.begin(), path_before);
+		path_before = path_it;
+		if (first_it == it->first.end()) {
+			// found prefix
+			std::filesystem::path real_path(it->second.real_path);
+			pathinout = std::accumulate(path_it, path.end(), real_path, std::divides{});
+			return it->second;
+		}
+	}
+	return std::nullopt; // no prefix found
+}
 
 static bool validate_network_access(
 	const struct sockaddr_storage& addr,
@@ -109,44 +143,16 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 	// Set the current working directory
 	machine().fds().set_current_working_directory(
 		config.current_working_directory);
-	// Add all the allowed paths to the VMs file descriptor sub-system
-	for (auto& path : config.allowed_paths) {
-		if (path.prefix && path.writable) {
-			// Add as a read+write prefix path
-			machine().fds().add_writable_prefix(path.virtual_path);
-			machine().fds().add_readonly_prefix(path.virtual_path);
-			continue;
-		} else if (path.prefix) {
-			// Add as a read-only prefix path
-			machine().fds().add_readonly_prefix(path.virtual_path);
-			continue;
-		}
-		machine().fds().add_readonly_file(path.virtual_path);
-	}
 	// Add a single writable file simply called 'state'
 	machine().fds().set_open_writable_callback(
 	[&] (std::string& path) -> bool {
-		for (auto& tpath : config.allowed_paths) {
-			if (tpath.virtual_path == path && tpath.writable) {
-				// Rewrite the path to the allowed file
-				path = tpath.real_path;
-				return true;
-			}
-		}
-		return false;
+		auto vpath = lookup_allowed_path(path, machine().fds().current_working_directory(), config.allowed_paths);
+		return vpath && vpath->writable;
 	});
 	machine().fds().set_open_readable_callback(
 	[&] (std::string& path) -> bool {
-		// Rewrite the path if it's in the rewrite paths
-		// It's also allowed to be opened (read-only)
-		auto it = config.rewrite_path_indices.find(path);
-		if (it != config.rewrite_path_indices.end()) {
-			const size_t index = it->second;
-			// Rewrite the path to the allowed file
-			path = config.allowed_paths.at(index).real_path;
-			return true;
-		}
-		return false;
+		auto vpath = lookup_allowed_path(path, machine().fds().current_working_directory(), config.allowed_paths);
+		return vpath && vpath->readable;
 	});
 	machine().fds().set_connect_socket_callback(
 	[this] (int fd, struct sockaddr_storage& addr) -> bool {
@@ -174,19 +180,8 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 
 	machine().fds().set_resolve_symlink_callback(
 	[&] (std::string& path) -> bool {
-		for (auto& tpath : config.allowed_paths) {
-			if (tpath.virtual_path == path && tpath.symlink) {
-				// Rewrite the path to where the symlink points
-				path = tpath.real_path;
-				return true;
-			}
-		}
-		if (path == "/proc/self/exe") {
-			// Rewrite the path to the real path of the executable
-			path = config.filename;
-			return true;
-		}
-		return false;
+		auto vpath = lookup_allowed_path(path, machine().fds().current_working_directory(), config.allowed_paths);
+		return vpath && vpath->symlink;
 	});
 }
 VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
@@ -214,27 +209,6 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	machine().fds().set_current_working_directory(config().current_working_directory);
 	// Disable epoll_wait() preemption when timeout=-1
 	machine().fds().set_preempt_epoll_wait(false);
-	// Add all the allowed paths to the VMs file descriptor sub-system
-	for (auto& path : config().allowed_paths) {
-		if (path.prefix && path.writable) {
-			// Add as a prefix path
-			machine().fds().add_writable_prefix(path.virtual_path);
-			continue;
-		}
-		machine().fds().add_readonly_file(path.virtual_path);
-	}
-	// Add a single writable file simply called 'state'
-	machine().fds().set_open_writable_callback(
-	[this] (std::string& path) -> bool {
-		for (auto& tpath : config().allowed_paths) {
-			if (tpath.virtual_path == path && tpath.writable) {
-				// Rewrite the path to the allowed file
-				path = tpath.real_path;
-				return true;
-			}
-		}
-		return false;
-	});
 	/* Allow duplicating read-only FDs from the source */
 	machine().fds().set_find_readonly_master_vm_fd_callback(
 		[this, master = &other] (int vfd) -> std::optional<const tinykvm::FileDescriptors::Entry*> {
@@ -323,7 +297,6 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		if (dyn_elf.has_interpreter()) {
 			// The real program path (which must be guest-readable)
 			/// XXX: TODO: Use /proc/self/exe instead of this?
-			m_machine.fds().add_readonly_file(config().filename);
 			args.push_back("/lib64/ld-linux-x86-64.so.2");
 			args.push_back(config().filename);
 		} else {

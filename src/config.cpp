@@ -1,5 +1,6 @@
 #include "config.hpp"
 #include <CLI/CLI.hpp>
+#include <filesystem>
 #include <fstream>
 #include <limits.h>
 #include <arpa/inet.h>
@@ -221,13 +222,53 @@ static bool parse_addresses(
 	return false;
 }
 
+static void ensure_path(
+	std::filesystem::path path,
+	std::map<std::filesystem::path, Configuration::VirtualPath, Configuration::ComparePathSegments>& allowed_paths,
+	bool readable, bool writable,
+	std::filesystem::path symlink_path = ""
+) {
+	if (path.is_relative()) {
+		path = std::filesystem::current_path() / path;
+	}
+	path = path.lexically_normal();
+	if (!symlink_path.empty()) {
+		if (symlink_path.is_relative()) {
+			symlink_path = std::filesystem::current_path() / path;
+		}
+		symlink_path = path.lexically_normal();
+	}
+	auto it = allowed_paths.find(path);
+	if (it == allowed_paths.end()) {
+		allowed_paths.emplace(path, Configuration::VirtualPath {
+			.real_path = symlink_path.empty() ? path : symlink_path,
+			.virtual_path = path,
+			.readable = readable,
+			.writable = writable,
+			.symlink = !symlink_path.empty(),
+		});
+		return;
+	}
+	Configuration::VirtualPath& vpath = it->second;
+	if (readable) {
+		vpath.readable = true;
+	}
+	if (writable) {
+		vpath.writable = true;
+	}
+	if (!symlink_path.empty()) {
+		vpath.real_path = symlink_path;
+		vpath.symlink = true;
+	}
+}
+
 Configuration Configuration::FromArgs(int argc, char* argv[])
 {
 	Configuration config;
 	CLI::App app{"kvmserver"};
 
-	bool allow_read = false;
-	bool allow_write = false;
+	std::vector<std::string> allow_read;
+	std::vector<std::string> allow_write;
 	std::vector<std::string> allow_env;
 	std::vector<std::string> allow_net;
 	std::vector<std::string> allow_connect;
@@ -237,7 +278,8 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 
 	app.add_option("program", config.filename, "Program")->required();
 	app.add_option("args", config.main_arguments, "Program arguments");
-	app.add_option("--cwd", config.current_working_directory, "Set the guests working directory");
+	app.add_option("--cwd", config.current_working_directory, "Set the guests working directory")
+		->default_val(std::filesystem::current_path());
 	// TODO: This does not allow env=[] in config file.
 	app.add_option("--env", config.environ, "add an environment variable")->allow_extra_args(false);
 
@@ -258,14 +300,14 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	}, "Enable verbose output");
 	app.add_flag("--allow-all", [&](bool allow_all) {
 		if (allow_all) {
-			allow_read = true;
-			allow_write = true;
+			allow_read.emplace_back("/");
+			allow_write.emplace_back("/");
 			allow_env.emplace_back("*");
 			allow_net.emplace_back("true");
 		}
 	}, "Allow all access")->group("Permissions");
-	app.add_flag("--allow-read", allow_read, "Allow filesystem read access")->excludes("--allow-all")->group("Permissions");
-	app.add_flag("--allow-write", allow_write, "Allow filesystem write access")->excludes("--allow-all")->group("Permissions");
+	app.add_flag("--allow-read{/}", allow_read, "Allow filesystem read access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
+	app.add_flag("--allow-write{/}", allow_write, "Allow filesystem write access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
 	app.add_flag("--allow-env{*}", allow_env, "Allow access to environment variables. Optionally specify accessible environment variables (e.g. --allow-env=USER,PATH,API_*).")->delimiter(',')->excludes("--allow-all")->group("Permissions");
 	app.add_flag("--allow-net", allow_net, "Allow network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
 	app.add_flag("--allow-connect", allow_connect, "Allow outgoing network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
@@ -305,40 +347,24 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		if (config.concurrency == 0) {
 			config.concurrency = std::thread::hardware_concurrency();
 		}
-		if (config.current_working_directory.empty()) {
-			char* cwd = get_current_dir_name();
-			config.current_working_directory = cwd;
-			free(cwd);
+		for (auto& path : allow_read) {
+			ensure_path(path, config.allowed_paths, true, false);
+		}
+		for (auto& path : allow_write) {
+			ensure_path(path, config.allowed_paths, false, true);
+		}
+		// Rewrite the path to the real path of the executable
+		// TODO: reverse map real to virtual.
+		ensure_path("/proc/self/exe", config.allowed_paths, false, false, config.filename);
+		ensure_path(config.filename, config.allowed_paths, true, false);
+		if (config.verbose) {
+			std::cerr<<"TinyKVM: allowed_paths = {\n";
+			for (auto& [k, v] : config.allowed_paths) {
+				std::cout<<"  "<<k<<": "<<v<<",\n";
+			}
+			std::cout<<"}\n";
 		}
 
-		if (allow_write) {
-			config.allowed_paths.push_back(Configuration::VirtualPath {
-				.real_path = "/",
-				.virtual_path = "/",
-				.writable = true,
-				.prefix = true,
-			});
-			config.allowed_paths.push_back(Configuration::VirtualPath {
-				.real_path = config.current_working_directory,
-				.virtual_path = ".",
-				.writable = true,
-				.prefix = true,
-			});
-		}
-		else if (allow_read) {
-			config.allowed_paths.push_back(Configuration::VirtualPath {
-				.real_path = "/",
-				.virtual_path = "/",
-				.writable = false,
-				.prefix = true,
-			});
-			config.allowed_paths.push_back(Configuration::VirtualPath {
-				.real_path = config.current_working_directory,
-				.virtual_path = ".",
-				.writable = false,
-				.prefix = true,
-			});
-		}
 		extern char **environ;
 		for (const auto& name : allow_env) {
 			// XXX ensure name has no = using validator
