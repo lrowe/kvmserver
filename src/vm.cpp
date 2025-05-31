@@ -31,30 +31,24 @@ const std::optional<Configuration::VirtualPath> lookup_allowed_path(
 	std::string& pathinout, const std::string& cwd,
 	const std::map<std::filesystem::path, Configuration::VirtualPath, Configuration::ComparePathSegments>& allowed_paths
 ) {
-	//printf("lookup_allowed_path %s\n", pathinout.c_str());
 	std::filesystem::path path(pathinout);
 	if (path.is_relative()) {
 		path = std::filesystem::path(cwd) / path;
 	}
 	path = path.lexically_normal();
-	// { /foo: true, /foo/bar: true, /foo/qux: true }.lower_bound(/foo/baz) -> /foo/qux
-	auto it = allowed_paths.lower_bound(path);
-	if (it != allowed_paths.end() && it->first == path) {
-		// exact match
-		pathinout = it->second.real_path;
-		return it->second;
-	}
-	std::filesystem::path::iterator path_before = path.end();
-	while (it != allowed_paths.begin())	{
-		--it; // /foo/bar
-		auto [first_it, path_it] = std::mismatch(it->first.begin(), it->first.end(), path.begin(), path_before);
-		path_before = path_it;
+	// Find first key strictly greater than path, e.g.
+	// { /foo: true, /foo/bar: true, /qux: true }.upper_bound(/foo/baz) -> /qux
+	auto it = allowed_paths.upper_bound(path);
+	while (it != allowed_paths.begin()) {
+		--it; // Previous key is either the path or shares a common prefix, e.g. /foo/bar.
+		auto [first_it, path_it] = std::mismatch(it->first.begin(), it->first.end(), path.begin(), path.end());
 		if (first_it == it->first.end()) {
-			// found prefix
-			std::filesystem::path real_path(it->second.real_path);
-			pathinout = std::accumulate(path_it, path.end(), real_path, std::divides{});
+			// If that key is itself a prefix return the real_path plus the remainder of path
+			pathinout = std::accumulate(path_it, path.end(), it->second.real_path, std::divides{});
 			return it->second;
 		}
+		// otherwise lookup the common prefix
+		it = allowed_paths.upper_bound(std::accumulate(path.begin(), path_it, std::filesystem::path("/"), std::divides{}));
 	}
 	return std::nullopt; // no prefix found
 }

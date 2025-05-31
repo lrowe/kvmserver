@@ -55,17 +55,17 @@ struct Configuration
 	};
 
 	struct VirtualPath {
-		std::string real_path;
-		std::string virtual_path; /* Path inside the VM, optional */
+		std::filesystem::path real_path;
+		std::filesystem::path virtual_path; /* Path inside the VM, optional */
 		bool readable = false;
 		bool writable = false;
 		bool symlink = false; /* Treated as a symlink path, to be resolved */
 	};
 
 	friend std::ostream& operator<<(std::ostream& os, const VirtualPath& v) {
-		os<< "VirtualPath{ .real_path="<<v.real_path
-			<< "; .virtual_path=" << v.virtual_path
-			<< "; " << (v.readable ? "r": "") << (v.writable ? "w": "") << (v.symlink ? "s": "")
+		os<< "VirtualPath{ .real_path=" << v.real_path
+			<< ", .virtual_path=" << v.virtual_path
+			<< ", " << (v.readable ? "r": "") << (v.writable ? "w": "") << (v.symlink ? "s": "")
 			<< " }";
     return os;
 	}
