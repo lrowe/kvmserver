@@ -10,6 +10,7 @@
 #include <thread>
 #include <unistd.h>
 #include <ranges>
+extern char **environ;
 
 template <typename T>
 void add_remapping(const std::string& remap, std::vector<T>& remappings)
@@ -158,11 +159,11 @@ static bool parse_addresses(
 			if (address.back() != ']') {
 				throw CLI::ValidationError("Invalid ipv6 address", value);
 			}
-			std::string address(address.substr(1, value.length() - 2));
+			std::string new_address(address.substr(1, value.length() - 2));
 			auto& storage = allowed_ipv6.emplace_back((struct sockaddr_storage) {});
 			sockaddr_in6* addr = reinterpret_cast<sockaddr_in6*>(&storage);
 			addr->sin6_family = AF_INET6;
-			if (inet_pton(AF_INET6, address.c_str(), &addr->sin6_addr) <= 0) {
+			if (inet_pton(AF_INET6, new_address.c_str(), &addr->sin6_addr) <= 0) {
 				throw CLI::ValidationError("Invalid IPv6 address", value);
 			}
 			addr->sin6_port = htons(port);
@@ -365,11 +366,10 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 			std::cout<<"}\n";
 		}
 
-		extern char **environ;
 		for (const auto& name : allow_env) {
 			// XXX ensure name has no = using validator
 			if (name.back() == '*') {
-				for (char** env = environ; *env != nullptr; ++env) {
+				for (char** env = ::environ; *env != nullptr; ++env) {
 					if (strncmp(*env, name.data(), name.size() - 1) == 0) {
 						config.environ.push_back(*env);
 					}
