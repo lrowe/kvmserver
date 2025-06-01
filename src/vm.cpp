@@ -2,7 +2,10 @@
 
 #include "settings.hpp"
 #include <cstring>
+#include <filesystem>
 #include <netinet/in.h>
+#include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <sys/poll.h>
 #include <sys/signal.h>
@@ -22,6 +25,89 @@ static const std::string_view select_main_binary(std::string_view program_binary
 			ld_linux_x86_64_so.size());
 	}
 	return program_binary;
+}
+
+static bool lookup_allowed_path(
+	std::string& pathinout, const std::string& cwd,
+	const std::map<std::filesystem::path, Configuration::VirtualPath, Configuration::ComparePathSegments>& allowed_paths,
+	std::function<bool(const Configuration::VirtualPath&)> extract
+) {
+	std::filesystem::path path(pathinout);
+	if (path.is_relative()) {
+		path = std::filesystem::path(cwd) / path;
+	}
+	path = (path / "").lexically_normal().parent_path();
+	// Find first key strictly greater than path, e.g.
+	// { /foo: true, /foo/bar: true, /qux: true }.upper_bound(/foo/baz) -> /qux
+	auto it = allowed_paths.upper_bound(path);
+	while (it != allowed_paths.begin()) {
+		--it; // Previous key is either the path or shares a common prefix, e.g. /foo/bar.
+		auto [first_it, path_it] = std::mismatch(it->first.begin(), it->first.end(), path.begin(), path.end());
+		if (first_it == it->first.end()) {
+			if (extract(it->second)) {
+				// If that key is itself a prefix return the real_path plus the remainder of path
+				pathinout = std::accumulate(path_it, path.end(), it->second.real_path, std::divides{});
+				return true;
+			}
+			--path_it;
+		}
+		// otherwise lookup the common prefix
+		it = allowed_paths.upper_bound(std::accumulate(path.begin(), path_it, std::filesystem::path("/"), std::divides{}));
+	}
+	return false; // no prefix found
+}
+
+static bool validate_network_access(
+	const struct sockaddr_storage& addr,
+	const std::vector<struct sockaddr_storage>& allowed_ipv4,
+	const std::vector<struct sockaddr_storage>& allowed_ipv6
+) {
+	// IPv4
+	if (addr.ss_family == AF_INET)
+	{
+		// Compare the socket address with the allowed address
+		const struct sockaddr_in* addr_ipv4 =
+			reinterpret_cast<const struct sockaddr_in*>(&addr);
+		for (auto& allowed : allowed_ipv4) {
+			const struct sockaddr_in* addr_allowed =
+				reinterpret_cast<const struct sockaddr_in*>(&allowed);
+			if (addr_ipv4->sin_addr.s_addr == addr_allowed->sin_addr.s_addr ||
+					addr_allowed->sin_addr.s_addr == 0) {
+				// The socket address is allowed
+				if (addr_ipv4->sin_port == addr_allowed->sin_port ||
+					addr_allowed->sin_port == 0) {
+					// The socket port is allowed
+					return true;
+				}
+			} // in_addr
+		}
+		// No match found
+		return false;
+	}
+	// IPv6
+	if (addr.ss_family == AF_INET6)
+	{
+		const struct sockaddr_in6* addr_ipv6 =
+			reinterpret_cast<const struct sockaddr_in6*>(&addr);
+		for (auto& allowed : allowed_ipv6) {
+			const struct sockaddr_in6* addr_allowed =
+				reinterpret_cast<const struct sockaddr_in6*>(&allowed);
+			if (memcmp(&addr_allowed->sin6_addr, &in6addr_any, sizeof(struct in6_addr)) == 0 ||
+					memcmp(&addr_allowed->sin6_addr, &addr_ipv6->sin6_addr, sizeof(struct in6_addr)) == 0) {
+				// The socket address is allowed
+				if (addr_allowed->sin6_port == 0 ||
+					addr_ipv6->sin6_port == addr_allowed->sin6_port) {
+					// The socket port is allowed
+					return true;
+				}
+			} // in6_addr
+		}
+		// No match found
+		return false;
+	}
+	// Unknown address family
+	fprintf(stderr, "Unknown address family: %d\n", addr.ss_family);
+	return false;
 }
 
 VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& config)
@@ -55,106 +141,35 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 	// Set the current working directory
 	machine().fds().set_current_working_directory(
 		config.current_working_directory);
-	// Add all the allowed paths to the VMs file descriptor sub-system
-	for (auto& path : config.allowed_paths) {
-		if (path.prefix && path.writable) {
-			// Add as a read+write prefix path
-			machine().fds().add_writable_prefix(path.virtual_path);
-			machine().fds().add_readonly_prefix(path.virtual_path);
-			continue;
-		} else if (path.prefix) {
-			// Add as a read-only prefix path
-			machine().fds().add_readonly_prefix(path.virtual_path);
-			continue;
-		}
-		machine().fds().add_readonly_file(path.virtual_path);
-	}
 	// Add a single writable file simply called 'state'
 	machine().fds().set_open_writable_callback(
 	[&] (std::string& path) -> bool {
-		for (auto& tpath : config.allowed_paths) {
-			if (tpath.virtual_path == path && tpath.writable) {
-				// Rewrite the path to the allowed file
-				path = tpath.real_path;
-				return true;
-			}
-		}
-		return false;
+		return lookup_allowed_path(path, machine().fds().current_working_directory(),
+			config.allowed_paths, [](const Configuration::VirtualPath& vpath) { return vpath.writable; });
 	});
 	machine().fds().set_open_readable_callback(
 	[&] (std::string& path) -> bool {
-		// Rewrite the path if it's in the rewrite paths
-		// It's also allowed to be opened (read-only)
-		auto it = config.rewrite_path_indices.find(path);
-		if (it != config.rewrite_path_indices.end()) {
-			const size_t index = it->second;
-			// Rewrite the path to the allowed file
-			path = config.allowed_paths.at(index).real_path;
-			return true;
-		}
-		return false;
+		return lookup_allowed_path(path, machine().fds().current_working_directory(),
+			config.allowed_paths, [](const Configuration::VirtualPath& vpath) { return vpath.readable; });
 	});
 	machine().fds().set_connect_socket_callback(
 	[this] (int fd, struct sockaddr_storage& addr) -> bool {
 		(void)fd;
-		const bool is_unix = addr.ss_family == AF_UNIX;
-		const bool is_ipv4 = addr.ss_family == AF_INET;
-		const bool is_ipv6 = addr.ss_family == AF_INET6;
-		if (is_unix)
+
+		// Validate unix socket path against allow-read
+		if (addr.ss_family == AF_UNIX)
 		{
-			const struct sockaddr_un* addr_unix =
-				reinterpret_cast<const struct sockaddr_un*>(&addr);
-			for (auto& tpath : m_config.allowed_network_unix) {
-				// Compare the socket path with the allowed path
-				if (addr_unix->sun_path == tpath.unix_path) {
-					// The socket path is allowed
-					return true;
-				}
-			}
+			// Compare the socket path with the allowed path
+			const struct sockaddr_un *addr_unix =
+				reinterpret_cast<const struct sockaddr_un *>(&addr);
+			std::string sun_path = addr_unix->sun_path;
+			// TODO: reverse the virtual path mapping here?
+			return machine().fds().is_readable_path(sun_path);
 		}
-		else if (is_ipv4)
-		{
-			// Compare the socket address with the allowed address
-			const struct sockaddr_in* addr_ipv4 =
-				reinterpret_cast<const struct sockaddr_in*>(&addr);
-			for (auto& tpath : m_config.allowed_network_ipv4) {
-				const struct sockaddr_in* addr_allowed =
-					reinterpret_cast<const struct sockaddr_in*>(&tpath.sockaddr);
-				if (addr_ipv4->sin_addr.s_addr == addr_allowed->sin_addr.s_addr) {
-					// The socket address is allowed
-					if (addr_ipv4->sin_port == addr_allowed->sin_port ||
-						addr_allowed->sin_port == 0) {
-						// The socket port is allowed
-						return true;
-					}
-				} // in_addr
-			}
-		}
-		else if (is_ipv6)
-		{
-			const struct sockaddr_in6* addr_ipv6 =
-				reinterpret_cast<const struct sockaddr_in6*>(&addr);
-			for (auto& tpath : m_config.allowed_network_ipv6) {
-				const struct sockaddr_in6* addr_allowed =
-					reinterpret_cast<const struct sockaddr_in6*>(&tpath.sockaddr);
-				if (std::memcmp(&addr_ipv6->sin6_addr, &addr_allowed->sin6_addr, sizeof(addr_ipv6->sin6_addr)) == 0) {
-					// The socket address is allowed
-					if (addr_ipv6->sin6_port == addr_allowed->sin6_port ||
-						addr_allowed->sin6_port == 0) {
-						// The socket port is allowed
-						return true;
-					}
-				} // in6_addr
-			}
-		}
-		else
-		{
-			// Unknown address family
-			fprintf(stderr, "Unknown address family: %d\n", addr.ss_family);
-			return false;
-		}
-		// No match found
-		return m_config.network_allow_connect;
+
+		// Validate network addresses against allow-connect
+		return validate_network_access(
+			addr, m_config.allowed_connect_ipv4, m_config.allowed_connect_ipv6);
 	});
 	machine().fds().listening_socket_callback =
 	[this] (int vfd, int fd) -> bool {
@@ -163,19 +178,14 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 
 	machine().fds().set_resolve_symlink_callback(
 	[&] (std::string& path) -> bool {
-		for (auto& tpath : config.allowed_paths) {
-			if (tpath.virtual_path == path && tpath.symlink) {
-				// Rewrite the path to where the symlink points
-				path = tpath.real_path;
+		bool symlink = false;
+		lookup_allowed_path(path, machine().fds().current_working_directory(),
+			config.allowed_paths, [&](const Configuration::VirtualPath& vpath) {
+				symlink = vpath.symlink;
+				// stop iteration here
 				return true;
-			}
-		}
-		if (path == "/proc/self/exe") {
-			// Rewrite the path to the real path of the executable
-			path = config.filename;
-			return true;
-		}
-		return false;
+		});
+		return symlink;
 	});
 }
 VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
@@ -203,27 +213,6 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	machine().fds().set_current_working_directory(config().current_working_directory);
 	// Disable epoll_wait() preemption when timeout=-1
 	machine().fds().set_preempt_epoll_wait(false);
-	// Add all the allowed paths to the VMs file descriptor sub-system
-	for (auto& path : config().allowed_paths) {
-		if (path.prefix && path.writable) {
-			// Add as a prefix path
-			machine().fds().add_writable_prefix(path.virtual_path);
-			continue;
-		}
-		machine().fds().add_readonly_file(path.virtual_path);
-	}
-	// Add a single writable file simply called 'state'
-	machine().fds().set_open_writable_callback(
-	[this] (std::string& path) -> bool {
-		for (auto& tpath : config().allowed_paths) {
-			if (tpath.virtual_path == path && tpath.writable) {
-				// Rewrite the path to the allowed file
-				path = tpath.real_path;
-				return true;
-			}
-		}
-		return false;
-	});
 	/* Allow duplicating read-only FDs from the source */
 	machine().fds().set_find_readonly_master_vm_fd_callback(
 		[this, master = &other] (int vfd) -> std::optional<const tinykvm::FileDescriptors::Entry*> {
@@ -312,7 +301,6 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		if (dyn_elf.has_interpreter()) {
 			// The real program path (which must be guest-readable)
 			/// XXX: TODO: Use /proc/self/exe instead of this?
-			m_machine.fds().add_readonly_file(config().filename);
 			args.push_back("/lib64/ld-linux-x86-64.so.2");
 			args.push_back(config().filename);
 		} else {
@@ -641,70 +629,20 @@ bool VirtualMachine::validate_listener(int fd)
 		fprintf(stderr, "Listener getsockname() failed: %s\n", strerror(errno));
 		throw std::runtime_error("getsockname() failed");
 	}
-	const bool is_unix = addr.ss_family == AF_UNIX;
-	const bool is_ipv4 = addr.ss_family == AF_INET;
-	const bool is_ipv6 = addr.ss_family == AF_INET6;
 
-	if (is_unix)
+	// Validate unix socket path against allow-read and allow-write
+	if (addr.ss_family == AF_UNIX)
 	{
 		// Compare the socket path with the allowed path
 		const struct sockaddr_un *addr_unix =
 			reinterpret_cast<const struct sockaddr_un *>(&addr);
-		for (auto& tpath : m_config.allowed_network_unix)
-		if (addr_unix->sun_path == tpath.unix_path
-			&& tpath.is_listenable)
-		{
-			// The socket path is allowed
-			return true;
-		}
+		std::string sun_path = addr_unix->sun_path;
+		// TODO: reverse the virtual path mapping here?
+		return machine().fds().is_writable_path(sun_path) &&
+			machine().fds().is_readable_path(sun_path);
 	}
-	else if (is_ipv4)
-	{
-		const struct sockaddr_in *addr_ipv4 =
-			reinterpret_cast<const struct sockaddr_in *>(&addr);
-		for (auto& tpath : m_config.allowed_network_ipv4)
-		{
-			const struct sockaddr_in *addr_allowed =
-				reinterpret_cast<const struct sockaddr_in *>(&tpath.sockaddr);
-			if (addr_ipv4->sin_addr.s_addr == addr_allowed->sin_addr.s_addr
-				&& tpath.is_listenable)
-			{
-				// The socket address is allowed
-				if (addr_ipv4->sin_port == addr_allowed->sin_port
-					|| addr_allowed->sin_port == 0)
-				{
-					// The socket port is allowed
-					return true;
-				}
-			} // in_addr
-		}
-	}
-	else if (is_ipv6)
-	{
-		const struct sockaddr_in6 *addr_ipv6 =
-			reinterpret_cast<const struct sockaddr_in6 *>(&addr);
-		for (auto& tpath : m_config.allowed_network_ipv6)
-		{
-			const struct sockaddr_in6 *addr_allowed =
-				reinterpret_cast<const struct sockaddr_in6 *>(&tpath.sockaddr);
-			if (std::memcmp(&addr_ipv6->sin6_addr, &addr_allowed->sin6_addr, sizeof(addr_ipv6->sin6_addr)) == 0
-				&& tpath.is_listenable)
-			{
-				// The socket address is allowed
-				if (addr_ipv6->sin6_port == addr_allowed->sin6_port
-					|| addr_allowed->sin6_port == 0)
-				{
-					// The socket port is allowed
-					return true;
-				}
-			} // in6_addr
-		}
-	} // ipv4/ipv6
-	else
-	{
-		// Unknown address family
-		fprintf(stderr, "Unknown address family: %d\n", addr.ss_family);
-		throw std::runtime_error("Unknown address family");
-	}
-	return m_config.network_allow_listen;
+
+	// Validate network addresses against allow listen lists
+	return validate_network_access(
+		addr, m_config.allowed_listen_ipv4, m_config.allowed_listen_ipv6);
 }

@@ -1,9 +1,9 @@
 #pragma once
+#include <filesystem>
+#include <map>
 #include <string>
 #include <sys/socket.h> // for sockaddr_storage
 #include <tinykvm/common.hpp>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 struct Configuration
@@ -27,7 +27,6 @@ struct Configuration
 	uint64_t hugepage_arena_size = 0; /* Megabytes */
 	uint64_t hugepage_requests_arena = 0; /* Megabytes */
 	bool     executable_heap = true;
-	bool     clock_gettime_uses_rdtsc = false;
 	bool     hugepages    = false;
 	bool     split_hugepages = true;
 	bool     transparent_hugepages = false;
@@ -43,28 +42,41 @@ struct Configuration
 
 	std::vector<tinykvm::VirtualRemapping> vmem_remappings;
 
+	struct ComparePathSegments {
+			// Sort paths so that /foo/bar < /foo./bar even though '.' < '/'
+			bool operator()(const std::filesystem::path& left, const std::filesystem::path& right) const {
+				auto [left_it, right_it] = std::mismatch(left.begin(), left.end(), right.begin(), right.end());
+				if (left_it == left.end())
+					return right_it != right.end();
+				if (right_it == right.end())
+					return false;
+				return *left_it < *right_it;
+			};
+	};
+
 	struct VirtualPath {
-		std::string real_path;
-		std::string virtual_path; /* Path inside the VM, optional */
+		std::filesystem::path real_path;
+		std::filesystem::path virtual_path; /* Path inside the VM, optional */
+		bool readable = false;
 		bool writable = false;
 		bool symlink = false; /* Treated as a symlink path, to be resolved */
-		bool usable_in_fork = false;
-		bool prefix = false;
 	};
-	std::vector<VirtualPath> allowed_paths;
-	std::unordered_map<std::string, size_t> rewrite_path_indices;
-	std::string current_working_directory = "/";
 
-	struct NetworkPath {
-		std::string unix_path;
-		struct sockaddr_storage sockaddr;
-		bool is_listenable = false;
-	};
-	std::vector<NetworkPath> allowed_network_unix;
-	std::vector<NetworkPath> allowed_network_ipv4;
-	std::vector<NetworkPath> allowed_network_ipv6;
-	bool network_allow_connect = false; /* Allow all outgoing network connections */
-	bool network_allow_listen = false; /* Allow all incoming network connections */
+	friend std::ostream& operator<<(std::ostream& os, const VirtualPath& v) {
+		os<< "VirtualPath{ .real_path=" << v.real_path
+			<< ", .virtual_path=" << v.virtual_path
+			<< ", " << (v.readable ? "r": "") << (v.writable ? "w": "") << (v.symlink ? "s": "")
+			<< " }";
+    return os;
+	}
 
-	static Configuration FromJsonFile(const std::string& filename);
+	std::map<std::filesystem::path, VirtualPath, ComparePathSegments> allowed_paths;
+	std::string current_working_directory;
+
+	std::vector<struct sockaddr_storage> allowed_connect_ipv4;
+	std::vector<struct sockaddr_storage> allowed_listen_ipv4;
+	std::vector<struct sockaddr_storage> allowed_connect_ipv6;
+	std::vector<struct sockaddr_storage> allowed_listen_ipv6;
+
+	static Configuration FromArgs(int argc, char* argv[]);
 };

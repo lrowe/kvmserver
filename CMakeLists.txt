@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(kvmserver CXX)
 
 add_subdirectory(ext/tinykvm tinykvm)
-add_subdirectory(ext/json    json)
+add_subdirectory(ext/CLI11)
 
 add_executable(kvmserver
 	src/main.cpp
@@ -14,7 +14,7 @@ add_executable(kvmserver
 target_compile_features(kvmserver PUBLIC cxx_std_20)
 target_link_libraries(kvmserver
 	tinykvm
-	nlohmann_json
+	CLI11::CLI11
 	jemalloc
 )
 
