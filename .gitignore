@@ -1,5 +1,7 @@
 __pycache__/
 .build/
+.cache/
+.gdb_history
 .ruff_cache/
 .venv/
 .vscode/

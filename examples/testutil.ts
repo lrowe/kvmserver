@@ -7,7 +7,8 @@ const KVMSERVER_COMMAND =
 type KvmServerCommandOptions = {
   program: string;
   args?: string[];
-  cwd?: string | URL;
+  cwd?: Deno.CommandOptions["cwd"];
+  env?: Deno.CommandOptions["env"];
   ephemeral?: boolean;
   allowAll?: boolean;
   warmup?: number;
@@ -17,7 +18,7 @@ type KvmServerCommandOptions = {
 export class KvmServerCommand {
   #command: Deno.Command;
   constructor(options: KvmServerCommandOptions) {
-    const { cwd } = options;
+    const { cwd, env } = options;
     const args = [
       "--output=L",
       KVMSERVER_COMMAND,
@@ -29,13 +30,14 @@ export class KvmServerCommand {
         : [],
       ...options.allowAll ? ["--allow-all"] : [],
       ...options.ephemeral ? ["--ephemeral"] : [],
-      options.program,
       "--",
+      options.program,
       ...options.args ?? [],
     ];
     this.#command = new Deno.Command("stdbuf", {
       args,
       cwd,
+      env,
       stdout: "piped",
     });
   }
@@ -55,8 +57,8 @@ export class KvmServerCommand {
               if (line.startsWith("Program")) {
                 resolve();
               }
-            },
-          }),
+            }
+          })
         )
         .pipeTo(new WritableStream());
       await promise;
@@ -72,7 +74,7 @@ export function testHelloWorld(options: KvmServerCommandOptions) {
   return async () => {
     const command = new KvmServerCommand(options);
     await using _proc = await command.spawn();
-    using client = Deno.createHttpClient({ poolIdleTimeout: 0 });
+    using client = Deno.createHttpClient({ poolMaxIdlePerHost: 0 });
     const response = await fetch("http://127.0.0.1:8000/", { client });
     assert(response.ok, "response.ok");
     const text = await response.text();
