@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { TextLineStream } from "@std/streams/text-line-stream";
 
-const KVMSERVER_COMMAND =
+export const KVMSERVER_COMMAND =
   new URL(import.meta.resolve("../.build/kvmserver")).pathname;
 
 type KvmServerCommandOptions = {

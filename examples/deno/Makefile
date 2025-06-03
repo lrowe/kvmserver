@@ -1,4 +1,4 @@
-.PHONY: build check clean format test
+.PHONY: build check clean fmt lint test
 build: ;
 check:
 	deno check
