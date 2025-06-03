@@ -156,7 +156,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 	[this] (int fd, struct sockaddr_storage& addr) -> bool {
 		(void)fd;
 
-		// Validate unix socket path against allow-read
+		// Validate unix socket path against allow-read and allow-write
 		if (addr.ss_family == AF_UNIX)
 		{
 			// Compare the socket path with the allowed path
@@ -164,7 +164,8 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 				reinterpret_cast<const struct sockaddr_un *>(&addr);
 			std::string sun_path = addr_unix->sun_path;
 			// TODO: reverse the virtual path mapping here?
-			return machine().fds().is_readable_path(sun_path);
+			return machine().fds().is_writable_path(sun_path) &&
+				machine().fds().is_readable_path(sun_path);
 		}
 
 		// Validate network addresses against allow-connect
