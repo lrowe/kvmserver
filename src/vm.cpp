@@ -141,7 +141,6 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 	// Set the current working directory
 	machine().fds().set_current_working_directory(
 		config.current_working_directory);
-	// Add a single writable file simply called 'state'
 	machine().fds().set_open_writable_callback(
 	[&] (std::string& path) -> bool {
 		return lookup_allowed_path(path, machine().fds().current_working_directory(),
@@ -152,7 +151,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 		return lookup_allowed_path(path, machine().fds().current_working_directory(),
 			config.allowed_paths, [](const Configuration::VirtualPath& vpath) { return vpath.readable; });
 	});
-	machine().fds().set_connect_socket_callback(
+	machine().fds().connect_socket_callback =
 	[this] (int fd, struct sockaddr_storage& addr) -> bool {
 		(void)fd;
 
@@ -171,7 +170,27 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 		// Validate network addresses against allow-connect
 		return validate_network_access(
 			addr, m_config.allowed_connect_ipv4, m_config.allowed_connect_ipv6);
-	});
+	};
+	machine().fds().bind_socket_callback =
+	[this] (int fd, struct sockaddr_storage& addr) -> bool {
+		(void)fd;
+
+		// Validate unix socket path against allow-read and allow-write
+		if (addr.ss_family == AF_UNIX)
+		{
+			// Compare the socket path with the allowed path
+			const struct sockaddr_un *addr_unix =
+				reinterpret_cast<const struct sockaddr_un *>(&addr);
+			std::string sun_path = addr_unix->sun_path;
+			// TODO: reverse the virtual path mapping here?
+			return machine().fds().is_writable_path(sun_path) &&
+				machine().fds().is_readable_path(sun_path);
+		}
+
+		// Validate network addresses against allow-listen
+		return validate_network_access(
+			addr, m_config.allowed_listen_ipv4, m_config.allowed_listen_ipv6);
+	};
 	machine().fds().listening_socket_callback =
 	[this] (int vfd, int fd) -> bool {
 		return this->validate_listener(fd);
@@ -219,7 +238,8 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 		[this, master = &other] (int vfd) -> std::optional<const tinykvm::FileDescriptors::Entry*> {
 			return master->machine().fds().entry_for_vfd(vfd);
 		});
-	machine().fds().set_connect_socket_callback(other.machine().fds().connect_socket_callback);
+	machine().fds().connect_socket_callback = other.machine().fds().connect_socket_callback;
+	machine().fds().bind_socket_callback = other.machine().fds().bind_socket_callback;
 	// When a VM is ephemeral we try to detect when a client
 	// disconnects, so we can reset the VM and accept a new connection
 	// with a clean slate.
