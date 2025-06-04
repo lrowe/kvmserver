@@ -224,41 +224,40 @@ static bool parse_addresses(
 }
 
 static void ensure_path(
-	std::filesystem::path path,
+	std::filesystem::path src,
+	std::filesystem::path dst,
 	std::map<std::filesystem::path, Configuration::VirtualPath, Configuration::ComparePathSegments>& allowed_paths,
-	bool readable, bool writable,
-	std::filesystem::path symlink_path = ""
+	bool readable, bool writable, bool symlink
 ) {
-	if (path.is_relative()) {
-		path = std::filesystem::current_path() / path;
+	if (src.is_relative()) {
+		src = std::filesystem::current_path() / src;
 	}
-	path = (path / "").lexically_normal().parent_path();
-	if (!symlink_path.empty()) {
-		if (symlink_path.is_relative()) {
-			symlink_path = std::filesystem::current_path() / path;
-		}
-		symlink_path = (symlink_path / "").lexically_normal().parent_path();
+	src = (src / "").lexically_normal().parent_path();
+	if (dst.is_relative()) {
+		dst = std::filesystem::current_path() / dst;
 	}
-	auto it = allowed_paths.find(path);
+	dst = (dst / "").lexically_normal().parent_path();
+
+	auto it = allowed_paths.find(src);
 	if (it == allowed_paths.end()) {
-		allowed_paths.emplace(path, Configuration::VirtualPath {
-			.real_path = symlink_path.empty() ? path : symlink_path,
-			.virtual_path = path,
+		allowed_paths.emplace(src, Configuration::VirtualPath {
+			.real_path = dst,
+			.virtual_path = src,
 			.readable = readable,
 			.writable = writable,
-			.symlink = !symlink_path.empty(),
+			.symlink = symlink,
 		});
 		return;
 	}
 	Configuration::VirtualPath& vpath = it->second;
+	vpath.real_path = dst;
 	if (readable) {
 		vpath.readable = true;
 	}
 	if (writable) {
 		vpath.writable = true;
 	}
-	if (!symlink_path.empty()) {
-		vpath.real_path = symlink_path;
+	if (symlink) {
 		vpath.symlink = true;
 	}
 }
@@ -270,6 +269,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 
 	std::vector<std::string> allow_read;
 	std::vector<std::string> allow_write;
+	std::vector<std::string> bind;
 	std::vector<std::string> allow_env;
 	std::vector<std::string> allow_net;
 	std::vector<std::string> allow_connect;
@@ -313,6 +313,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_flag("--allow-net", allow_net, "Allow network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
 	app.add_flag("--allow-connect", allow_connect, "Allow outgoing network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
 	app.add_flag("--allow-listen", allow_listen, "Allow incoming network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
+	app.add_flag("--bind", bind, "<host-path>:<guest-path>[:r?w?=r]")->delimiter(',')->excludes("--allow-all")->group("Permissions");
 
 	app.add_option("--max-boot-time", config.max_boot_time)->capture_default_str()->group("Advanced");
 	app.add_option("--max-request-time", config.max_req_time)->capture_default_str()->group("Advanced");
@@ -349,15 +350,53 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 			config.concurrency = std::thread::hardware_concurrency();
 		}
 		for (auto& path : allow_read) {
-			ensure_path(path, config.allowed_paths, true, false);
+			ensure_path(path, path, config.allowed_paths, true, false, false);
 		}
 		for (auto& path : allow_write) {
-			ensure_path(path, config.allowed_paths, false, true);
+			ensure_path(path, path, config.allowed_paths, false, true, false);
+		}
+		for (auto& triple : bind) {
+			auto parts = std::views::split(triple, ':');
+			auto it = parts.begin();
+			if (it == parts.end()) {
+				throw CLI::ValidationError("too few parts", triple);
+			}
+			std::string src((*it).begin(), (*it).end());
+			++it;
+			if (it == parts.end()) {
+				throw CLI::ValidationError("too few parts", triple);
+			}
+			std::string dst((*it).begin(), (*it).end());
+			++it;
+			if (it == parts.end()) {
+				ensure_path(src, dst, config.allowed_paths, true, false, false);
+			} else {
+				bool r = false;
+				bool w = false;
+				std::string perms((*it).begin(), (*it).end());
+				size_t i = 0;
+				if (perms.length() > i && perms[i] == 'r') {
+					r = true;
+					i++;
+				}
+				if (perms.length() > i && perms[i] == 'w') {
+					w = true;
+					i++;
+				}
+				if (i != perms.length()) {
+					throw CLI::ValidationError("invalid argument (rw)", perms);
+				}
+				++it;
+				if (it != parts.end()) {
+					throw CLI::ValidationError("too many parts", triple);
+				}
+				ensure_path(src, dst, config.allowed_paths, r, w, false);
+			}
 		}
 		// Rewrite the path to the real path of the executable
 		// TODO: reverse map real to virtual.
-		ensure_path("/proc/self/exe", config.allowed_paths, false, false, config.filename);
-		ensure_path(config.filename, config.allowed_paths, true, false);
+		ensure_path("/proc/self/exe", "/proc/self/exe", config.allowed_paths, false, false, true);
+		ensure_path(config.filename, config.filename, config.allowed_paths, true, false, false);
 		if (config.verbose) {
 			std::cerr<<"TinyKVM: allowed_paths = {\n";
 			for (auto& [k, v] : config.allowed_paths) {
