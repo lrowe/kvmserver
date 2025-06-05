@@ -15,7 +15,6 @@ target_compile_features(kvmserver PUBLIC cxx_std_20)
 target_link_libraries(kvmserver
 	tinykvm
 	CLI11::CLI11
-	jemalloc
 )
 
 if (SANITIZE)
