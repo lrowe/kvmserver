@@ -1,11 +1,11 @@
 import { assertEquals } from "@std/assert";
-import { KVMSERVER_COMMAND } from "../testutil.ts";
+import { KVMSERVER } from "../testutil.ts";
 
 Deno.test(
   "clock test",
   async () => {
     
-    const command = new Deno.Command(KVMSERVER_COMMAND, {
+    const command = new Deno.Command(KVMSERVER, {
       args: ["--allow-read=/lib", "./target/test"],
       cwd: import.meta.dirname,
     });

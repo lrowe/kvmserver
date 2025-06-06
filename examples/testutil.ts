@@ -1,7 +1,14 @@
 import { assert, assertEquals } from "@std/assert";
 import { TextLineStream } from "@std/streams/text-line-stream";
 
-export const KVMSERVER_COMMAND =
+function quote(s: string) {
+  // From: https://github.com/nodejs/node/issues/34840#issuecomment-677402567
+  if (s === "") return `''`;
+  if (!/[^%+,-.\/:=@_0-9A-Za-z]/.test(s)) return s;
+  return `'` + s.replace(/'/g, `'"'`) + `'`;
+}
+
+export const KVMSERVER = Deno.env.get("KVMSERVER") ??
   new URL(import.meta.resolve("../.build/kvmserver")).pathname;
 
 type KvmServerCommandOptions = {
@@ -21,7 +28,7 @@ export class KvmServerCommand {
     const { cwd, env } = options;
     const args = [
       "--output=L",
-      KVMSERVER_COMMAND,
+      KVMSERVER,
       ...options.threads !== undefined
         ? ["--threads", String(options.threads)]
         : [],
@@ -34,6 +41,7 @@ export class KvmServerCommand {
       options.program,
       ...options.args ?? [],
     ];
+    console.log(`stdbuf ${args.map(quote).join(" ")}`);
     this.#command = new Deno.Command("stdbuf", {
       args,
       cwd,
@@ -45,6 +53,11 @@ export class KvmServerCommand {
   async spawn(): Promise<Deno.ChildProcess> {
     const { promise, resolve } = Promise.withResolvers<void>();
     const proc = this.#command.spawn();
+    const status = proc.status.then((status) => {
+      if (!status.success) {
+        throw new Error(`Status code: ${status.code}`);
+      }
+    });
     try {
       proc.stdout
         .pipeThrough(new TextDecoderStream("latin1"))
@@ -57,11 +70,11 @@ export class KvmServerCommand {
               if (line.startsWith("Program")) {
                 resolve();
               }
-            }
-          })
+            },
+          }),
         )
         .pipeTo(new WritableStream());
-      await promise;
+      await Promise.race([promise, status]);
     } catch (error) {
       await proc[Symbol.asyncDispose]();
       throw error;

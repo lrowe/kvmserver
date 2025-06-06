@@ -10,10 +10,10 @@ clean:
 	$(MAKE) -C examples clean
 
 $(CMAKE_BUILD_DIR)/Makefile: CMakeLists.txt
-	cmake -DCMAKE_BUILD_TYPE=Release -B .build
+	cmake -DCMAKE_BUILD_TYPE=Release -B $(CMAKE_BUILD_DIR)
 
 $(CMAKE_BUILD_DIR)/kvmserver: $(CMAKE_BUILD_DIR)/Makefile
 	$(MAKE) -C $(@D) $(@F)
 
 test: $(CMAKE_BUILD_DIR)/kvmserver
-	$(MAKE) -C examples test
+	$(MAKE) -C examples test KVMSERVER=$(PWD)/$(CMAKE_BUILD_DIR)/kvmserver

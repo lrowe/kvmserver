@@ -1,6 +1,7 @@
 services:
   backend:
     build: .
+    target: demo
     command:
       - /bin/bash
       - -c
@@ -8,7 +9,7 @@ services:
         set -e;
         rm -f /sock/backend;
         umask 000;
-        exec kvmserver --allow-all -e -t 2 -w 1000 -p deno -- run --allow-all \
+        exec kvmserver --allow-all -e -t 2 -w 1000 -- deno run --allow-all \
           'data:,Deno.serve({ path: "/sock/backend" }, () => new Response("hello"))'
     devices:
       - /dev/kvm

@@ -1,4 +1,10 @@
-/*
-!/ext
-!/src
-!/CMakeLists.txt
+*
+!examples
+!ext
+!src
+!CMakeLists.txt
+!Makefile
+**/.venv
+**/.build
+**/__pycache__
+**/target
