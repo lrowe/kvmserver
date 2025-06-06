@@ -1,7 +1,7 @@
 import { testHelloWorld } from "../testutil.ts";
 
 const common = {
-  program: "./target/lune",
+  program: "lune",
   cwd: import.meta.dirname,
   allowAll: true,
 };
