@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1-labs
+
 # Build on manylinux so binary works on:
 # Debian 12+ / Ubuntu 21.10+ / Fedora 35+ / CentOS/RHEL 9+
 FROM quay.io/pypa/manylinux_2_34_x86_64 AS build
