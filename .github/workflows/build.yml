@@ -1,0 +1,74 @@
+name: build
+on:
+  push:
+    branches:
+      - "**"
+    tags-ignore:
+      - "**"
+env:
+  BUILDX_NO_DEFAULT_ATTESTATIONS: 1
+  IMAGE: "ghcr.io/${{ github.repository }}"
+  IMAGE_SOURCE: "${{ github.server_url }}/${{ github.repository }}"
+  RUN_SUFFIX: "-run.${{ github.run_number }}.${{ github.run_attempt }}"
+  GIT_SUFFIX: "-git.${{ github.sha }}"
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Log in to registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Create buildx builder
+        run: |
+          docker buildx create --name=container --driver=docker-container --use --bootstrap
+      # See https://github.com/moby/buildkit?tab=readme-ov-file#github-actions-cache-experimental
+      # Same as https://github.com/marketplace/actions/github-runtime
+      - name: Expose ACTIONS_ variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            for (const [key, value] of Object.entries(process.env)) {
+              if (key.startsWith('ACTIONS_')) {
+                core.info(`${key}=${value}`);
+                core.exportVariable(key, value);
+              }
+            }
+      - name: Enable KVM group perms
+        run: |
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Build and push bin
+        run: |
+          export IMAGE_REVISION=$(git log -1 --pretty=format:"%H" -- src/ ext/ CMakeLists.txt Dockerfile .dockerignore)
+          docker buildx build \
+            --builder=container \
+            --cache-from "type=gha,scope=buildkit-bin" \
+            --cache-to "type=gha,scope=buildkit-bin,mode=max" \
+            --label "org.opencontainers.image.source=$IMAGE_SOURCE" \
+            --label "org.opencontainers.image.revision=$IMAGE_REVISION" \
+            --tag "$IMAGE:bin$RUN_SUFFIX" \
+            --tag "$IMAGE:bin$GIT_SUFFIX" \
+            --load \
+            --push \
+            --target bin .
+      - name: Build and push test
+        run: |
+          export IMAGE_REVISION=$(git log -1 --pretty=format:"%H" -- examples/)
+          docker buildx build \
+            --builder=container \
+            --cache-from "type=gha,scope=buildkit-test" \
+            --cache-to "type=gha,scope=buildkit-test,mode=max" \
+            --label "org.opencontainers.image.source=$IMAGE_SOURCE" \
+            --label "org.opencontainers.image.revision=$IMAGE_REVISION" \
+            --tag "$IMAGE:test$RUN_SUFFIX" \
+            --tag "$IMAGE:test$GIT_SUFFIX" \
+            --load \
+            --push \
+            examples
+      - name: Test
+        run: |
+          docker run --rm --mount type=image,src="$IMAGE:bin$RUN_SUFFIX",dst=/mnt --device /dev/kvm "$IMAGE:test$RUN_SUFFIX"
