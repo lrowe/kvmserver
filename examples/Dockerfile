@@ -7,7 +7,6 @@
 # docker build -t kvmserver:test examples
 # KVM_GID=$(getent group kvm | cut -d: -f3) docker run --rm --mount type=image,src=kvmserver:bin,dst=/mnt --device /dev/kvm --group-add $KVM_GID -it kvmserver:test
 FROM debian:bookworm-slim
-LABEL org.opencontainers.image.source=https://github.com/libriscv/kvmserver
 LABEL org.opencontainers.image.description="kvmserver examples test runner"
 RUN set -e; \
     export DEBIAN_FRONTEND=noninteractive; \

@@ -1,0 +1,47 @@
+name: release
+on:
+  push:
+    tags:
+      - "**"
+env:
+  IMAGE: "ghcr.io/${{ github.repository }}"
+  GIT_SUFFIX: "-git.${{ github.sha }}"
+  TAG_SUFFIX: "-${{ github.ref_name }}"
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Log in to registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Push test
+        # don't make this ghcr Latest
+        run: |
+          docker pull "$IMAGE:test$GIT_SUFFIX"
+          docker tag "$IMAGE:test$GIT_SUFFIX" "$IMAGE:test$TAG_SUFFIX"
+          docker tag "$IMAGE:test$GIT_SUFFIX" "$IMAGE:test"
+          docker push "$IMAGE:test$TAG_SUFFIX"
+          docker push "$IMAGE:test"
+      - name: Push bin
+        # TODO: Handle tagging non-latest
+        run: |
+          docker pull "$IMAGE:bin$GIT_SUFFIX"
+          docker tag "$IMAGE:bin$GIT_SUFFIX" "$IMAGE:bin$TAG_SUFFIX"
+          docker tag "$IMAGE:bin$GIT_SUFFIX" "$IMAGE:bin"
+          docker tag "$IMAGE:bin$GIT_SUFFIX" "$IMAGE:latest"
+          docker push "$IMAGE:bin$TAG_SUFFIX"
+          docker push "$IMAGE:bin"
+          docker push "$IMAGE:latest"
+      - name: Push release bin gz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker create --name bin "$IMAGE:bin$GIT_SUFFIX" /kvmserver
+          docker cp bin:/kvmserver kvmserver
+          docker rm -v bin
+          gzip kvmserver
+          gh release upload ${{ github.ref_name }} kvmserver.gz
+  
