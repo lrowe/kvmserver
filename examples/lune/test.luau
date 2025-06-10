@@ -10,7 +10,7 @@ local RESPONSE = "Hello, World!"
 -- Serve should get proper path, query, and other request information
 
 local handle = net.serve(PORT, function(request)
-	print("Got a request from", request.ip, "on port", request.port)
+	print("Got a request for", request.path)
 
 	return RESPONSE
 end)
