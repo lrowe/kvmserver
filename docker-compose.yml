@@ -1,8 +1,22 @@
+# Run with podman-compose (1.4.0):
+# $ podman-compose build
+# $ podman-compose up
+# $ podman-compose down --volumes
+
+# Run with docker compose:
+# $ docker compose build
+# $ KVM_GID=$(getent group kvm | cut -d: -f3) docker compose up
+# $ docker compose down --volumes
+
+name: kvmserver-demo
 services:
   backend:
     build:
       context: .
-      target: demo
+      dockerfile_inline: |
+        FROM debian:bookworm-slim
+        COPY --from=denoland/deno:bin-2.3.5 /deno /usr/local/bin/
+        COPY --from=kvmserver:bin /kvmserver /usr/local/bin/
     command:
       - /bin/bash
       - -c
@@ -10,7 +24,8 @@ services:
         set -e;
         rm -f /sock/backend;
         umask 000;
-        exec kvmserver --allow-all -e -t 2 -w 1000 -- deno run --allow-all \
+        # TODO: kvmserver is causing stdout to be buffered
+        exec kvmserver --allow-all --ephemeral --threads 2 --warmup 1000 -- deno run --allow-all \
           'data:,let i=0; Deno.serve({ path: "/sock/backend" }, () => new Response("Hello request " + (++i)))'
     devices:
       - /dev/kvm
@@ -22,9 +37,8 @@ services:
       # $ KVM_GID=$(getent group kvm | cut -d: -f3) docker compose up
       # With rootless podman we must specify "keep-groups" (used as default here.)
       - "${KVM_GID:-keep-groups}"
-    init: true
+    init: true  # necessary for ^C to work
     read_only: true
-    tty: true
     volumes:
       - sock:/sock
   varnish:
