@@ -9,6 +9,9 @@ env:
   TAG_SUFFIX: "-${{ github.ref_name }}"
 jobs:
   release:
+    permissions:
+      packages: write
+      contents: write
     runs-on: ubuntu-24.04
     steps:
       - name: Log in to registry

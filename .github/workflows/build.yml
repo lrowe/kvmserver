@@ -13,6 +13,8 @@ env:
   GIT_SUFFIX: "-git.${{ github.sha }}"
 jobs:
   build:
+    permissions:
+      packages: write
     runs-on: ubuntu-24.04
     steps:
       - name: Log in to registry
