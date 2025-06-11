@@ -46,6 +46,7 @@ jobs:
       - name: Build and push test
         run: |
           export IMAGE_REVISION=$(git log -1 --pretty=format:"%H" -- examples/)
+          echo $IMAGE_REVISION
           docker buildx build \
             --builder=container \
             --cache-from "type=gha,scope=buildkit-test" \
@@ -60,6 +61,7 @@ jobs:
       - name: Build and push bin
         run: |
           export IMAGE_REVISION=$(git log -1 --pretty=format:"%H" -- src/ ext/ CMakeLists.txt Dockerfile .dockerignore)
+          echo $IMAGE_REVISION
           docker buildx build \
             --builder=container \
             --cache-from "type=gha,scope=buildkit-bin" \
