@@ -43,20 +43,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Build and push bin
-        run: |
-          export IMAGE_REVISION=$(git log -1 --pretty=format:"%H" -- src/ ext/ CMakeLists.txt Dockerfile .dockerignore)
-          docker buildx build \
-            --builder=container \
-            --cache-from "type=gha,scope=buildkit-bin" \
-            --cache-to "type=gha,scope=buildkit-bin,mode=max" \
-            --label "org.opencontainers.image.source=$IMAGE_SOURCE" \
-            --label "org.opencontainers.image.revision=$IMAGE_REVISION" \
-            --tag "$IMAGE:bin$RUN_SUFFIX" \
-            --tag "$IMAGE:bin$GIT_SUFFIX" \
-            --load \
-            --push \
-            --target bin .
       - name: Build and push test
         run: |
           export IMAGE_REVISION=$(git log -1 --pretty=format:"%H" -- examples/)
@@ -71,6 +57,20 @@ jobs:
             --load \
             --push \
             examples
+      - name: Build and push bin
+        run: |
+          export IMAGE_REVISION=$(git log -1 --pretty=format:"%H" -- src/ ext/ CMakeLists.txt Dockerfile .dockerignore)
+          docker buildx build \
+            --builder=container \
+            --cache-from "type=gha,scope=buildkit-bin" \
+            --cache-to "type=gha,scope=buildkit-bin,mode=max" \
+            --label "org.opencontainers.image.source=$IMAGE_SOURCE" \
+            --label "org.opencontainers.image.revision=$IMAGE_REVISION" \
+            --tag "$IMAGE:bin$RUN_SUFFIX" \
+            --tag "$IMAGE:bin$GIT_SUFFIX" \
+            --load \
+            --push \
+            --target bin .
       - name: Test
         run: |
           docker run --rm --mount type=image,src="$IMAGE:bin$RUN_SUFFIX",dst=/mnt --device /dev/kvm "$IMAGE:test$RUN_SUFFIX"
