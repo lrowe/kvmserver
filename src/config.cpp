@@ -269,7 +269,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 
 	std::vector<std::string> allow_read;
 	std::vector<std::string> allow_write;
-	std::vector<std::string> bind;
+	std::vector<std::string> volume;
 	std::vector<std::string> allow_env;
 	std::vector<std::string> allow_net;
 	std::vector<std::string> allow_connect;
@@ -313,7 +313,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_flag("--allow-net", allow_net, "Allow network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
 	app.add_flag("--allow-connect", allow_connect, "Allow outgoing network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
 	app.add_flag("--allow-listen", allow_listen, "Allow incoming network access")->delimiter(',')->excludes("--allow-all")->group("Permissions");
-	app.add_flag("--bind", bind, "<host-path>:<guest-path>[:r?w?=r]")->delimiter(',')->excludes("--allow-all")->group("Permissions");
+	app.add_flag("--volume", volume, "<host-path>:<guest-path>[:r?w?=r]")->delimiter(',')->excludes("--allow-all")->group("Permissions");
 
 	app.add_option("--max-boot-time", config.max_boot_time)->capture_default_str()->group("Advanced");
 	app.add_option("--max-request-time", config.max_req_time)->capture_default_str()->group("Advanced");
@@ -355,7 +355,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		for (auto& path : allow_write) {
 			ensure_path(path, path, config.allowed_paths, false, true, false);
 		}
-		for (auto& triple : bind) {
+		for (auto& triple : volume) {
 			auto parts = std::views::split(triple, ':');
 			auto it = parts.begin();
 			if (it == parts.end()) {
