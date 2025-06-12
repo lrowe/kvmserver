@@ -1,13 +1,31 @@
-# KVM server
+# Kvmserver - Fast per-request isolation for Linux executables with TinyKVM.
 
-blah blah blah sandboxing
+Kvmserver applies [TinyKVM](https://github.com/varnish/tinykvm)'s fast sandboxing technology to existing Linux server executables to provide per request isolation with extremely low overhead.
+
+Kvmserver works by intercepting the server's epoll event loop so each accepted connection is handled by a forked copy of the process running as a TinyKVM guest.
+After each connection TinyKVM resets the guest to a pristine state far more quickly than Linux is able to fork a process.
+TinyKVM is able to achieve such extremely fast reset times by running the guest processes under an emulated Linux userspace in KVM.
+
+This approach is particularly useful for JIT'ed runtimes where existing options require choosing between fast execution with virtualization, process forking, or v8 isolates; or fast sandbox reset with webassembly.
+
+> Deno performance stats
+
+Previous experiments with this real world React rendering benchmark have shown runtimes in the 10s of milliseconds with webassembly (which does not support JIT) or reset times of several milliseconds to either fork a process or start a new V8 isolate.
+
+## Performance characterization
+
+Execution of processes inside KVM generally runs at full speed.
+Any syscalls requiring communication with the host incur overhead of around a microsecond in VM context switching and permission checking between guest and host.
+Guest reset time is proportional to the number of dirty memory pages which must be reset.
+
+For simple endpoints the network stack overhead from establishing a new tcp connection can be significant so best performance is achieved by listening on a unix socket and serving incoming tcp connections through a reverse proxy to enable client connection reuse.
 
 ## Benchmarks
 
 Deno native:
 ```sh
-$ ./wrk -c1 -t1 http://127.00.1:8080
-Running 10s test @ http://127.00.1:8080
+$ ./wrk -c1 -t1 http://127.0.0.1:8080
+Running 10s test @ http://127.0.0.1:8080
   1 threads and 1 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
     Latency    12.04us   17.13us   1.89ms   99.24%
@@ -115,3 +133,143 @@ Requests/sec:   1823.58
 Transfer/sec:     54.38MB
 ```
 There is only a 10us difference between terminal `deno run` and sandboxed TinyKVM with resets as tail latency.
+
+## How it works
+
+```mermaid
+---
+title: Application is run within VM until it polls for a connection
+config:
+  look: handDrawn
+---
+graph LR
+  subgraph Incoming[ ]
+    C1([Connection 1])
+    C2([Connection 2])
+  end
+  Q[Accept Queue]
+  subgraph Kvmserver
+    W1[Worker]
+  end
+  C1 ~~~ Q
+  C2 ~~~ Q
+  Q --> W1
+style Incoming fill:transparent, stroke-width:0px
+style C1 fill:transparent, stroke-width:0px, color:transparent
+style C2 fill:transparent, stroke-width:0px, color:transparent
+```
+```mermaid
+---
+title: VM is paused and ephemeral workers are forked
+config:
+  look: handDrawn
+---
+graph LR
+  subgraph Incoming[ ]
+    C1([Connection 1])
+    C2([Connection 2])
+  end
+  Q[Accept Queue]
+  subgraph Kvmserver
+    W1[Worker 1]
+    W2[Worker 2]
+  end
+  C1 ~~~ Q
+  C2 ~~~ Q
+  Q --> W1
+  Q --> W2
+style Incoming fill:transparent, stroke-width:0px
+style C1 fill:transparent, stroke-width:0px, color:transparent
+style C2 fill:transparent, stroke-width:0px, color:transparent
+```
+```mermaid
+---
+title: Ephemeral worker accepts a new connection
+config:
+  look: handDrawn
+---
+graph LR
+  subgraph Incoming[ ]
+    C1([Connection 1])
+    C2([Connection 2])
+  end
+  Q[Accept Queue]
+  subgraph Kvmserver
+    W1[Worker 1]
+    W2[Worker 2]
+  end
+  C1 ==> Q
+  C2 --> Q
+  Q ==> W1
+  Q --> W2
+style Incoming fill:transparent, stroke-width:0px
+```
+```mermaid
+---
+title: And is prevented from accepting more connections
+config:
+  look: handDrawn
+---
+graph LR
+  subgraph Incoming[ ]
+    C1([Connection 1])
+    C2([Connection 2])
+  end
+  Q[Accept Queue]
+  subgraph Kvmserver
+    W1[Worker 1]
+    W2[Worker 2]
+  end
+  C1 ==> W1
+  C1 ~~~ Q
+  C2 --> Q
+  Q .- W1
+  Q --> W2
+style Incoming fill:transparent, stroke-width:0px
+```
+```mermaid
+---
+title: Ephemeral worker is reset at connection close
+config:
+  look: handDrawn
+---
+graph LR
+  subgraph Incoming[ ]
+    C1([Connection 1])
+    C2([Connection 2])
+  end
+  Q[Accept Queue]
+  subgraph Kvmserver
+    W1[Worker 1]
+    W2[Worker 2]
+  end
+  C1 ~~~ Q
+  C2 --> Q
+  Q -.- W1
+  Q --> W2
+style Incoming fill:transparent, stroke-width:0px
+style C1 text-decoration:line-through
+style W1 stroke-dasharray: 5 5
+```
+```mermaid
+---
+title: Ready to accept another connection
+config:
+  look: handDrawn
+---
+graph LR
+  subgraph Incoming[ ]
+    C3([Connection 3])
+    C2([Connection 2])
+  end
+  Q[Accept Queue]
+  subgraph Kvmserver
+    W1[Worker 1]
+    W2[Worker 2]
+  end
+  C3 --> Q
+  C2 --> Q
+  Q --> W1
+  Q --> W2
+style Incoming fill:transparent, stroke-width:0px
+```
