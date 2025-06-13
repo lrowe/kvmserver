@@ -395,7 +395,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		}
 		// Rewrite the path to the real path of the executable
 		// TODO: reverse map real to virtual.
-		ensure_path("/proc/self/exe", "/proc/self/exe", config.allowed_paths, false, false, true);
+		ensure_path("/proc/self/exe", config.filename, config.allowed_paths, false, false, true);
 		ensure_path(config.filename, config.filename, config.allowed_paths, true, false, false);
 		if (config.verbose) {
 			std::cerr<<"TinyKVM: allowed_paths = {\n";
