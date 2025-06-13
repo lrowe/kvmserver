@@ -18,10 +18,8 @@ ENV RUSTUP_HOME=/usr/local/share/rustup \
     RUSTUP_TOOLCHAIN=1.87.0
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | CARGO_HOME=/usr/local sh -s -- -y --no-modify-path --default-toolchain $RUSTUP_TOOLCHAIN
-# Newer lune releases require GLIBC_2.38 but bookworm has 2.36
-RUN curl -sSL https://github.com/lune-org/lune/releases/download/v0.8.9/lune-0.8.9-linux-x86_64.zip \
-    | gunzip -c > /usr/local/bin/lune \
-    && chmod +x /usr/local/bin/lune
+# Binary lune releases require GLIBC_2.38 but bookworm has 2.36
+RUN CARGO_HOME=/usr/local cargo install lune@0.9.4 --locked && rm -rf /usr/local/registry
 ENV UV_NO_CACHE=true \
     UV_PYTHON_BIN_DIR=/usr/local/bin \
     UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python
