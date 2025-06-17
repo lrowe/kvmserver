@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1-labs
 
-# Run with the kvmserver:bin image (or .build directory) mounted as /mnt.
+# Run with the kvmserver:bin image mounted as /mnt.
 
 # podman build -t kvmserver:test examples
 # podman run --rm --mount type=image,src=kvmserver:bin,dst=/mnt --device /dev/kvm --group-add keep-groups -it kvmserver:test
@@ -25,7 +25,7 @@ ENV UV_NO_CACHE=true \
     UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python
 COPY --from=ghcr.io/astral-sh/uv:0.7.11 /uv /uvx /usr/local/bin/
 RUN uv python install 3.13.4
-COPY --from=denoland/deno:bin-2.3.5 /deno /usr/local/bin/
+COPY --from=denoland/deno:bin-2.3.6 /deno /usr/local/bin/
 # Must run as non-root user to avoid Deno.Command setgroups(0, NULL)
 RUN useradd --system --home /examples --user-group runner
 USER runner
