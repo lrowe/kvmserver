@@ -4,7 +4,6 @@ import { KVMSERVER } from "../testutil.ts";
 Deno.test(
   "clock test",
   async () => {
-    
     const command = new Deno.Command(KVMSERVER, {
       args: ["--allow-read=/lib", "./target/test"],
       cwd: import.meta.dirname,
@@ -14,6 +13,9 @@ Deno.test(
     const stdout = new TextDecoder("latin1").decode(result.stdout);
     console.log(stdout);
     const lines = stdout.trim().split("\n");
-    assertEquals(lines.at(-1), "Realtime clock is monotonic and did not go backwards.");
-  }
-)
+    assertEquals(
+      lines.at(-1),
+      "Realtime clock is monotonic and did not go backwards.",
+    );
+  },
+);

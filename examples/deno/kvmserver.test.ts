@@ -15,7 +15,11 @@ const ephemeral = true;
 const warmup = 1;
 
 {
-  const args = ["run", "--allow-all", 'data:,Deno.serve(() => new Response("Hello, World!"))'];
+  const args = [
+    "run",
+    "--allow-all",
+    'data:,Deno.serve(() => new Response("Hello, World!"))',
+  ];
   Deno.test(
     "Deno.serve",
     testHelloWorld({ ...common, args }),
