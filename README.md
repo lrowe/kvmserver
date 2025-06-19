@@ -1,138 +1,114 @@
-# Kvmserver - Fast per-request isolation for Linux executables with TinyKVM.
+# Kvmserver - Fast per-request isolation for Linux executables with TinyKVM
 
-Kvmserver applies [TinyKVM](https://github.com/varnish/tinykvm)'s fast sandboxing technology to existing Linux server executables to provide per request isolation with extremely low overhead.
+Kvmserver applies [TinyKVM](https://github.com/varnish/tinykvm)'s fast
+sandboxing technology to existing Linux server executables to provide per
+request isolation with extremely low overhead.
 
-Kvmserver works by intercepting the server's epoll event loop so each accepted connection is handled by a forked copy of the process running as a TinyKVM guest.
-After each connection TinyKVM resets the guest to a pristine state far more quickly than Linux is able to fork a process.
-TinyKVM is able to achieve such extremely fast reset times by running the guest processes under an emulated Linux userspace in KVM.
+Kvmserver works by intercepting the server's epoll event loop so each accepted
+connection is handled by a forked copy of the process running as a TinyKVM
+guest. After each connection TinyKVM resets the guest to a pristine state far
+more quickly than Linux is able to fork a process. TinyKVM is able to achieve
+such extremely fast reset times by running the guest processes under an emulated
+Linux userspace in KVM.
 
-This approach is particularly useful for JIT'ed runtimes where existing options require choosing between fast execution with virtualization, process forking, or v8 isolates; or fast sandbox reset with webassembly.
+This approach is particularly useful for JIT'ed runtimes where existing options
+require choosing between fast execution with virtualization, process forking, or
+v8 isolates; or fast sandbox reset with webassembly.
 
-> Deno performance stats
-
-Previous experiments with this real world React rendering benchmark have shown runtimes in the 10s of milliseconds with webassembly (which does not support JIT) or reset times of several milliseconds to either fork a process or start a new V8 isolate.
-
-## Performance characterization
-
-Execution of processes inside KVM generally runs at full speed.
-Any syscalls requiring communication with the host incur overhead of around a microsecond in VM context switching and permission checking between guest and host.
-Guest reset time is proportional to the number of dirty memory pages which must be reset.
-
-For simple endpoints the network stack overhead from establishing a new tcp connection can be significant so best performance is achieved by listening on a unix socket and serving incoming tcp connections through a reverse proxy to enable client connection reuse.
+Previous experiments with this real world React rendering benchmark have shown
+runtimes in the 10s of milliseconds with webassembly (which does not support
+JIT) or reset times of several milliseconds to either fork a process or start a
+new V8 isolate. With Kvmserver we are able to run this benchmark with just 85µs
+of overhead.
 
 ## Benchmarks
 
-Deno native:
-```sh
-$ ./wrk -c1 -t1 http://127.0.0.1:8080
-Running 10s test @ http://127.0.0.1:8080
-  1 threads and 1 connections
-  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    12.04us   17.13us   1.89ms   99.24%
-    Req/Sec    85.20k     9.94k   96.70k    72.28%
-  855810 requests in 10.10s, 126.51MB read
-Requests/sec:  84739.32
-Transfer/sec:     12.53MB
+### Rust minimal http server
 
-$ ./wrk -c1 -t1 http://127.0.0.1:8000
-Running 10s test @ http://127.0.0.1:8000
-  1 threads and 1 connections
-  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    15.50us  137.91us   6.20ms   99.71%
-    Req/Sec    99.79k    11.03k  106.20k    93.07%
-  1002164 requests in 10.10s, 148.14MB read
-Requests/sec:  99223.33
-Transfer/sec:     14.67MB
-```
-Deno has good performance. 12us on average single-threaded. With single-threaded it also has to GC every once in a while, which adds acts as a large speed bump.
+| name                                  | average | p50   | p90   | p99   |
+| ------------------------------------- | ------- | ----- | ----- | ----- |
+| base                                  | 13 µs   | 11 µs | 17 µs | 20 µs |
+| kvmserver threads=1                   | 23 µs   | 20 µs | 29 µs | 33 µs |
+| kvmserver ephemeral threads=1         | 28 µs   | 28 µs | 30 µs | 37 µs |
+| kvmserver ephemeral threads=2         | 34 µs   | 33 µs | 37 µs | 51 µs |
+| kvmserver ephemeral threads=4         | 36 µs   | 35 µs | 39 µs | 57 µs |
+| kvmserver ephemeral threads=2 no tail | 28 µs   | 28 µs | 32 µs | 36 µs |
 
-Deno sandboxed in TinyKVM:
-```sh
-$ ./wrk -c1 -t1 http://127.0.0.1:8000
-Running 10s test @ http://127.0.0.1:8000
-  1 threads and 1 connections
-  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    15.50us    1.72us 126.00us   93.03%
-    Req/Sec    63.61k     2.35k   65.78k    88.12%
-  638961 requests in 10.10s, 94.45MB read
-Requests/sec:  63264.87
-Transfer/sec:      9.35MB
+### Deno helloworld
 
-$ ./wrk -c64 -t64 http://127.0.0.1:8000
-Running 10s test @ http://127.0.0.1:8000
-  64 threads and 64 connections
-  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    68.30us   97.70us  11.34ms   99.04%
-    Req/Sec    15.61k     6.90k   32.44k    77.84%
-  10038128 requests in 10.10s, 1.45GB read
-Requests/sec: 993829.98
-Transfer/sec:    146.91MB
-```
-Deno in TinyKVM has around ~4us in context-switching and safety overhead per request. But has good scaling with forked VMs.
+| name                                  | average | p50   | p90   | p99   |
+| ------------------------------------- | ------- | ----- | ----- | ----- |
+| base (reusing connection)             | 11 µs   | 10 µs | 14 µs | 16 µs |
+| base                                  | 17 µs   | 15 µs | 22 µs | 29 µs |
+| kvmserver threads=1                   | 33 µs   | 32 µs | 33 µs | 45 µs |
+| kvmserver ephemeral threads=1         | 50 µs   | 49 µs | 53 µs | 75 µs |
+| kvmserver ephemeral threads=2         | 58 µs   | 57 µs | 62 µs | 90 µs |
+| kvmserver ephemeral threads=4         | 60 µs   | 59 µs | 65 µs | 90 µs |
+| kvmserver ephemeral threads=2 no tail | 41 µs   | 38 µs | 46 µs | 59 µs |
 
-## Per-request isolation
+### Deno react renderer
 
-```sh
-$ ./wrk -c1 -t1 http://127.0.0.1:8000 -H "Connection: close"
-Running 10s test @ http://127.0.0.1:8000
-  1 threads and 1 connections
-  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    60.61us    5.35us 206.00us   83.50%
-    Req/Sec    13.40k   478.54    14.12k    62.38%
-  134615 requests in 10.10s, 22.34MB read
-Requests/sec:  13329.30
-Transfer/sec:      2.21MB
-```
-There is natural overhead in establishing a new connection for each request, but that's a necessary part of isolating each request. After each request the VM is completely reset, ready to go again. This benchmark is running an unmodified Deno stable binary with no special code or FFI. :)
+| name                                  | average | p50    | p90    | p99    |
+| ------------------------------------- | ------- | ------ | ------ | ------ |
+| base (reusing connection)             | 642 µs  | 606 µs | 673 µs | 805 µs |
+| base                                  | 646 µs  | 619 µs | 670 µs | 820 µs |
+| kvmserver threads=1                   | 649 µs  | 619 µs | 674 µs | 798 µs |
+| kvmserver ephemeral threads=1         | 695 µs  | 689 µs | 712 µs | 790 µs |
+| kvmserver ephemeral threads=2         | 705 µs  | 704 µs | 722 µs | 755 µs |
+| kvmserver ephemeral threads=4         | 711 µs  | 710 µs | 728 µs | 758 µs |
+| kvmserver ephemeral threads=2 no tail | 639 µs  | 634 µs | 662 µs | 721 µs |
 
-```sh
-$ whereis deno
-deno: /home/gonzo/.deno/bin/deno
-$ deno
-Deno 2.3.1
-```
+### Benmark details
 
-## React page-rendering benchmark
+- Non-ephemeral benchmark shows the overhead of sandboxing without any reset
+  between requests.
+- No-tail benchmark runs with only a single load generator connection to measure
+  latency excluding time spent after the response is sent to the client.
+- Deno is run with `--v8-flags=--predictable` which causes all work to happen on
+  thread. (At median this makes a 1.5% difference for the React benchmark and
+  none for helloworld.)
+- 1000 warmup requests were used to warm the JIT before benchmarking.
+- `deno compile` was used to avoid starting background disk cache threads.
+- The Rust minimal http server always closes connections.
+- Benchmarks were run on AMD Ryzen 9 7950X (32) @ 5.881Ghz with deno 2.3.6.
 
-Running a React benchmark we find:
-```sh
--= TinyKVM w/Deno ephemeral with reset as tail-latency =-
+## Performance characterization
 
-$ ./wrk -c1 -t1 http://127.0.0.1:8000 -H "Connection: close"
-Running 10s test @ http://127.0.0.1:8000
-  1 threads and 1 connections
-  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency   592.71us   26.35us   0.93ms   81.31%
-    Req/Sec     1.66k    14.66     1.68k    76.24%
-  16636 requests in 10.10s, 496.09MB read
-Requests/sec:   1647.23
-Transfer/sec:     49.12MB
+The React benchmark runs with 10µs of connection creation overhead, 15µs of
+sandbox execution overhead, and 55µs of sandbox reset overhead for a total of
+80µs out of 690µs. Performance is more consistent since reset avoids JIT spikes.
 
--= TinyKVM w/Deno ephemeral including reset =-
+- Execution of processes inside KVM generally runs at full speed.
+- Any syscalls requiring communication with the host incur overhead of around a
+  microsecond in VM context switching and permission checking.
+- VM reset accounts for most of the overhead. It is tail latency incurred after
+  connection close and consists of:
+  - Event loop / file descriptor reset, proportional to the number of open file
+    descriptors.
+  - Memory reset time, proportional to the number of dirty memory pages which
+    must be reset.
 
-$ ./wrk -c1 -t1 http://127.0.0.1:8000 -H "Connection: close"
-Running 10s test @ http://127.0.0.1:8000
-  1 threads and 1 connections
-  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency   756.92us   40.21us   3.96ms   99.42%
-    Req/Sec     1.30k     6.52     1.30k    77.23%
-  13036 requests in 10.10s, 388.74MB read
-Requests/sec:   1290.72
-Transfer/sec:     38.49MB
+For simple endpoints the network stack overhead from establishing a new tcp
+connection can be significant so best performance is achieved by listening on a
+unix socket and serving incoming tcp connections through a reverse proxy to
+enable client connection reuse.
 
--= Deno run terminal =-
+## Memory usage
 
-$ ./wrk -c1 -t1 http://127.0.0.1:8000 -H "Connection: close"
-Running 10s test @ http://127.0.0.1:8000
-  1 threads and 1 connections
-  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency   582.90us  511.51us  11.36ms   98.10%
-    Req/Sec     1.83k   181.40     1.93k    94.00%
-  18236 requests in 10.00s, 543.81MB read
-Requests/sec:   1823.58
-Transfer/sec:     54.38MB
-```
-There is only a 10us difference between terminal `deno run` and sandboxed TinyKVM with resets as tail latency.
+Kvmserver forks are very memory efficient since they only need allocate for
+pages written during a request (which are reset afterwards). This is great for
+largely single-threaded JITs like V8 since a large RSS can be amortized over
+many forked VMs.
+
+A simple benchmark rendering the same page over and over is the best case
+scenario. Expect real-world usage to touch more pages, but will still see
+substantial savings.
+
+| Program                  | RSS    | Reset   |
+| ------------------------ | ------ | ------- |
+| Rust minimal http server | 9 MB   | 68 KB   |
+| Deno hello world         | 102 MB | 452 KB  |
+| Deno react renderer      | 162 MB | 2324 KB |
 
 ## How it works
 
@@ -158,6 +134,7 @@ style Incoming fill:transparent, stroke-width:0px
 style C1 fill:transparent, stroke-width:0px, color:transparent
 style C2 fill:transparent, stroke-width:0px, color:transparent
 ```
+
 ```mermaid
 ---
 title: VM is paused and ephemeral workers are forked
@@ -182,6 +159,7 @@ style Incoming fill:transparent, stroke-width:0px
 style C1 fill:transparent, stroke-width:0px, color:transparent
 style C2 fill:transparent, stroke-width:0px, color:transparent
 ```
+
 ```mermaid
 ---
 title: Ephemeral worker accepts a new connection
@@ -204,6 +182,7 @@ graph LR
   Q --> W2
 style Incoming fill:transparent, stroke-width:0px
 ```
+
 ```mermaid
 ---
 title: And is prevented from accepting more connections
@@ -227,6 +206,7 @@ graph LR
   Q --> W2
 style Incoming fill:transparent, stroke-width:0px
 ```
+
 ```mermaid
 ---
 title: Ephemeral worker is reset at connection close
@@ -251,6 +231,7 @@ style Incoming fill:transparent, stroke-width:0px
 style C1 text-decoration:line-through
 style W1 stroke-dasharray: 5 5
 ```
+
 ```mermaid
 ---
 title: Ready to accept another connection
