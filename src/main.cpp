@@ -104,6 +104,8 @@ int main(int argc, char* argv[], char* envp[])
 				VirtualMachine forked_vm(vm, i);
 				forked_vm.set_on_reset_callback([&vm, i]()
 				{
+					if (!vm.config().verbose)
+						return;
 					// Progressively print the reset counter
 					const uint64_t reset_counter = reset_counters.at(i).fetch_add(1);
 					if (i == 0) {
