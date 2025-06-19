@@ -12,23 +12,23 @@ async fn main() -> Result<(), std::io::Error> {
         .unwrap_or_else(|| "127.0.0.1:8000".to_string());
     if addr.contains("/") {
         let server = UnixListener::bind(&addr)?;
-        println!("Listening on: {addr}");
+        eprintln!("Listening on: {addr}");
         loop {
             let (stream, _) = server.accept().await?;
             tokio::spawn(async move {
                 if let Err(e) = process(stream).await {
-                    println!("failed to process connection; error = {e}");
+                    eprintln!("failed to process connection; error = {e}");
                 }
             });
         }
     } else {
         let server = TcpListener::bind(&addr).await?;
-        println!("Listening on: {addr}");
+        eprintln!("Listening on: {addr}");
         loop {
             let (stream, _) = server.accept().await?;
             tokio::spawn(async move {
                 if let Err(e) = process(stream).await {
-                    println!("failed to process connection; error = {e}");
+                    eprintln!("failed to process connection; error = {e}");
                 }
             });
         }
