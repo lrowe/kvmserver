@@ -77,3 +77,6 @@ jobs:
       - name: Test
         run: |
           docker run --rm --mount type=image,src="$IMAGE:bin$RUN_SUFFIX",dst=/mnt --device /dev/kvm "$IMAGE:test$RUN_SUFFIX"
+      - name: Bench
+        run: |
+          docker run --rm --mount type=image,src="$IMAGE:bin$RUN_SUFFIX",dst=/mnt --device /dev/kvm "$IMAGE:test$RUN_SUFFIX" deno run --allow-all bench.ts
