@@ -202,6 +202,21 @@ async function addBenches(groupName: string, program: string) {
     ["--disable-keepalive", "-c=4", `-z=${duration}`],
   );
 
+  await group.bench(
+    "kvmserver ephemeral threads=2 no tail",
+    kvmServerCommand({
+      program,
+      args,
+      cwd,
+      allowAll,
+      warmup,
+      ephemeral,
+      threads: 2,
+    }),
+    waitProgram,
+    ["--disable-keepalive", "-c=1", `-z=${duration}`],
+  );
+
   return group;
 }
 
