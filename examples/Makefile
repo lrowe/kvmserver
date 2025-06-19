@@ -10,7 +10,7 @@ SUBDIRS_TARGETS := \
 
 # .all .clean
 HERE_TARGETS := $(addsuffix $(TARGETS),.)
-HERE_ONLY := test bench
+HERE_ONLY := bench test
 
 .PHONY : $(TARGETS) $(SUBDIRS_TARGETS) $(HERE_TARGETS) $(HERE_ONLY)
 
@@ -41,10 +41,10 @@ $(SUBDIRS_TARGETS) :
 .lint:
 	deno lint
 
+# Do not recurse for bench
+bench: build
+	deno run --allow-all bench.ts
+
 # Do not recurse for test
 test: build
 	deno test --allow-all --quiet .
-
-# Do not recurse for test
-bench: build
-	deno run --allow-all bench.ts
