@@ -1,6 +1,7 @@
 .PHONY: build check clean fmt lint test
 build:
 	cargo build
+	cargo build --release
 check:
 	cargo check
 clean:

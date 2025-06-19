@@ -25,6 +25,7 @@ ENV UV_NO_CACHE=true \
     UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python
 COPY --from=ghcr.io/astral-sh/uv:0.7.11 /uv /uvx /usr/local/bin/
 RUN uv python install 3.13.4
+ADD https://github.com/hatoo/oha/releases/download/v1.8.0/oha-linux-amd64-pgo /usr/local/bin/oha
 COPY --from=denoland/deno:bin-2.3.6 /deno /usr/local/bin/
 # Must run as non-root user to avoid Deno.Command setgroups(0, NULL)
 RUN useradd --system --home /examples --user-group runner
