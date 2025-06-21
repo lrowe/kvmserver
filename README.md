@@ -93,6 +93,8 @@ connection can be significant so best performance is achieved by listening on a
 unix socket and serving incoming tcp connections through a reverse proxy to
 enable client connection reuse.
 
+Running under nested virtualization incurs additional overhead of around 200µs.
+
 ## Memory usage
 
 Kvmserver forks are very memory efficient since they only need allocate for
@@ -109,6 +111,79 @@ substantial savings.
 | Rust minimal http server | 9 MB   | 68 KB   |
 | Deno hello world         | 102 MB | 452 KB  |
 | Deno react renderer      | 162 MB | 2324 KB |
+
+## Command line arguments
+
+```
+kvmserver [OPTIONS] program [args...]
+
+
+POSITIONALS:
+  program TEXT REQUIRED       Program
+  args TEXT ...               Program arguments
+
+OPTIONS:
+  -h,     --help              Print this help message and exit
+  -c,     --config [kvmserver.toml]
+                              Read a toml file
+          --cwd TEXT [/home/lrowe/devel/kvmserver/.build]
+                              Set the guests working directory
+          --env TEXT ...      add an environment variable
+  -t,     --threads UINT [1]  Number of request VMs (0 to use cpu count)
+  -e,     --ephemeral         Use ephemeral VMs
+  -w,     --warmup UINT [0]   Number of warmup requests
+  -v,     --verbose           Enable verbose output
+          --print-config      Print config and exit without running program
+
+Permissions:
+          --allow-all Excludes: --allow-read --allow-write --allow-env --allow-net --allow-connect --allow-listen --volume
+                              Allow all access
+          --allow-read{/} Excludes: --allow-all
+                              Allow filesystem read access
+          --allow-write{/} Excludes: --allow-all
+                              Allow filesystem write access
+          --allow-env{*} Excludes: --allow-all
+                              Allow access to environment variables. Optionally specify
+                              accessible environment variables (e.g.
+                              --allow-env=USER,PATH,API_*).
+          --allow-net Excludes: --allow-all
+                              Allow network access
+          --allow-connect Excludes: --allow-all
+                              Allow outgoing network access
+          --allow-listen Excludes: --allow-all
+                              Allow incoming network access
+          --volume Excludes: --allow-all
+                              <host-path>:<guest-path>[:r?w?=r]
+
+Advanced:
+          --max-boot-time FLOAT [20]
+          --max-request-time FLOAT [8]
+          --max-main-memory UINT [8192]
+          --max-address-space UINT [131072]
+          --max-request-memory UINT [128]
+          --limit-request-memory UINT [128]
+          --shared-memory UINT [0]
+          --dylink-address-hint UINT [2]
+          --heap-address-hint UINT [256]
+          --hugepage-arena-size UINT [0]
+          --hugepage-requests-arena UINT [0]
+          --no-executable-heap{false}
+          --hugepages
+          --no-split-hugepages{false}
+          --transparent-hugepages
+          --no-relocate-fixed-mmap{false}
+          --no-ephemeral-keep-working-memory{false}
+          --remapping ...     virt:size(mb)[:phys=0][:r?w?x?=rw]
+```
+
+## Configuration file
+
+By default kvmserver will look for a file named `kvmserver.toml` in the current
+directory and if it exists read configuration from it.
+
+Command line arguments and configuration are handled by
+[CLI11](https://github.com/CLIUtils/CLI11) which supports a subset of
+[TOML](https://toml.io/). Notably array values must be kept to a single line.
 
 ## How it works
 
