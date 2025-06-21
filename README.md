@@ -1,25 +1,27 @@
 # Kvmserver - Fast per-request isolation for Linux executables with TinyKVM
 
-Kvmserver applies [TinyKVM](https://github.com/varnish/tinykvm)'s fast
-sandboxing technology to existing Linux server executables to provide per
-request isolation with extremely low overhead.
+KVM Server applies [TinyKVM](https://github.com/varnish/tinykvm)'s fast
+sandboxing technology to existing unmodified Linux server executables in order
+to provide per request isolation with extremely low overhead.
 
-Kvmserver works by intercepting the server's epoll event loop so each accepted
-connection is handled by a forked copy of the process running as a TinyKVM
-guest. After each connection TinyKVM resets the guest to a pristine state far
-more quickly than Linux is able to fork a process. TinyKVM is able to achieve
-such extremely fast reset times by running the guest processes under an emulated
-Linux userspace in KVM.
+KVM Server intercepts the programs epoll event loop, and guides new accepted
+connections onto tiny forked instances of the sandboxed process. After each
+request concludes, TinyKVM resets the guest to a pristine state far more quickly
+than Linux is able to fork a process. TinyKVM is able to achieve such extremely
+fast reset times by running the guest processes under an emulated Linux userspace
+in KVM.
 
-This approach is particularly useful for JIT'ed runtimes where existing options
-require choosing between fast execution with virtualization, process forking, or
-v8 isolates; or fast sandbox reset with webassembly.
+This approach is uniquely elegant for JIT'ed runtimes where existing options
+require choosing between fast execution with virtualization (but no per-request
+isolation), slow process forking, slow v8 isolates; or very very slow interpreters
+like QuickJS embedded in WebAssembly.
 
-Previous experiments with this real world React rendering benchmark have shown
-runtimes in the 10s of milliseconds with webassembly (which does not support
+Previous experiments with a real world React rendering benchmark have shown
+runtimes in the 10s of milliseconds with WebAssembly (which does not support
 JIT) or reset times of several milliseconds to either fork a process or start a
-new V8 isolate. With Kvmserver we are able to run this benchmark with just 85µs
-of overhead.
+new V8 isolate. We are able to run this benchmark 1.5-2 orders of magnitude faster
+than existing solutions, while running unmodified dynamic executables taken directly
+from the latest version, creating a new frontier for per-request isolation.
 
 ## Benchmarks
 
