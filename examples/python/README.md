@@ -1,4 +1,4 @@
-# kvmserver python examples
+# KVM Server Python examples
 
 We currently test against the following:
 
