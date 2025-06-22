@@ -8,20 +8,21 @@ KVM Server intercepts the programs epoll event loop, and guides new accepted
 connections onto tiny forked instances of the sandboxed process. After each
 request concludes, TinyKVM resets the guest to a pristine state far more quickly
 than Linux is able to fork a process. TinyKVM is able to achieve such extremely
-fast reset times by running the guest processes under an emulated Linux userspace
-in KVM.
+fast reset times by running the guest processes under an emulated Linux
+userspace in KVM.
 
 This approach is uniquely elegant for JIT'ed runtimes where existing options
 require choosing between fast execution with virtualization (but no per-request
-isolation), slow process forking, slow v8 isolates; or very very slow interpreters
-like QuickJS embedded in WebAssembly.
+isolation), slow process forking, slow v8 isolates; or very very slow
+interpreters like QuickJS embedded in WebAssembly.
 
 Previous experiments with a real world React rendering benchmark have shown
 runtimes in the 10s of milliseconds with WebAssembly (which does not support
 JIT) or reset times of several milliseconds to either fork a process or start a
-new V8 isolate. We are able to run this benchmark 1.5-2 orders of magnitude faster
-than existing solutions, while running unmodified dynamic executables taken directly
-from the latest version, creating a new frontier for per-request isolation.
+new V8 isolate. We are able to run this benchmark 1.5-2 orders of magnitude
+faster than existing solutions, while running unmodified dynamic executables
+taken directly from the latest version, creating a new frontier for per-request
+isolation.
 
 ## Benchmarks
 
@@ -114,6 +115,11 @@ substantial savings.
 | Deno hello world         | 102 MB | 452 KB  |
 | Deno react renderer      | 162 MB | 2324 KB |
 
+## Runtime requirements
+
+- Access to /dev/kvm is required. This normally requires your user to the `kvm`
+  group. Changes to group membership usually take effect at next login.
+
 ## Command line arguments
 
 ```
@@ -181,11 +187,102 @@ Advanced:
 ## Configuration file
 
 By default kvmserver will look for a file named `kvmserver.toml` in the current
-directory and if it exists read configuration from it.
+directory and if it exists will read configuration from there.
 
 Command line arguments and configuration are handled by
 [CLI11](https://github.com/CLIUtils/CLI11) which supports a subset of
 [TOML](https://toml.io/). Notably array values must be kept to a single line.
+
+## Binary release
+
+Binary releases may be downloaded fomr the GitHub releases page. This binary
+requires glibc 2.34 or higher and should work on: Debian 12+ / Ubuntu 21.10+ /
+Fedora 35+ / CentOS/RHEL 9+.
+
+## Build from source
+
+On debian based distributions `cmake libc6-dev g++ make` are required.
+
+Run `make` to build `.build/kvmserver`.
+
+## Running in Docker or Podman
+
+The binary release is also available from GitHub Container Registry and may be
+copied into your glibc based Dockerfile:
+
+```Dockerfile
+FROM debian:bookworm-slim
+COPY --from=ghcr.io/libriscv/kvmserver:bin /kvmserver /usr/local/bin/
+```
+
+Give permission to access /dev/kvm when running container:
+
+```sh
+KVM_GID=$(getent group kvm | cut -d: -f3) \
+docker run --rm --device /dev/kvm --group-add $KVM_GID IMAGE
+```
+
+```sh
+podman run --rm --device /dev/kvm --group-add keep-groups IMAGE
+```
+
+On Ubuntu 24.04 you likely want to install a recent podman from
+[podman-static](https://github.com/mgoltzsche/podman-static) and podman-compose
+from [PyPI podman-compose](https://pypi.org/project/podman-compose/).
+
+### Docker compose / podman-compose
+
+See: [docker-compose.yml](docker-compose.yml).
+
+Run with docker compose:
+
+```sh
+docker compose build
+KVM_GID=$(getent group kvm | cut -d: -f3) docker compose up
+docker compose down --volumes
+```
+
+Run with podman-compose:
+
+```sh
+podman-compose build
+podman-compose up
+podman-compose down --volumes
+```
+
+## Guest program considerations
+
+KVM Server is intended for running primarily single threaded guest programs.
+There is some basic threading support to allow guests to make progress when
+threads are used but they should be avoided when possible.
+
+### Deno
+
+- Multiple background threads for reading cache files are started when using
+  `deno run`. This results in the epoll event loop being run with a timeout
+  until those threads complete. This is avoided by using `deno compile` to
+  package your dependenices into a single executable and avoid this overhead.
+
+- Warmup the JIT before kvmserver forks, e.g.
+  `kvmserver --ephemeral --warmup 1000`, so the worker VMs run optimized JIT
+  code.
+
+- Deno is based on V8 which uses background threads for garbage collection and
+  JIT compilation by default. This can be avoided by specifying
+  `--v8-flags=--predictable`. Using `--v8-flags=--single-threaded` also works
+  but requires many more warmup iterations to reach full speed.
+
+- Specify v8 memory limits so that guest process does not grow too large during
+  warmup, e.g. `--v8-flags=--max-old-space-size=256,--max-semi-space-size=256`.
+
+- If using `deno run` (not recommended) specify environment variable
+  `DENO_NO_UPDATE_CHECK=1` to avoid checking for updates.
+
+- Recommended v8 flags (memory usage will depend on program):
+
+```
+--v8-flags=-predictable,--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--max-old-space-size=256,--max-semi-space-size=256
+```
 
 ## How it works
 

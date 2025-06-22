@@ -1,5 +1,5 @@
 CMAKE_BUILD_DIR := .build
-
+.DEFAULT_GOAL := build
 .PHONY: bench build clean test $(CMAKE_BUILD_DIR)/kvmserver
 
 bench: $(CMAKE_BUILD_DIR)/kvmserver
