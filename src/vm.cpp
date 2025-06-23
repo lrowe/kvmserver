@@ -238,6 +238,16 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 		[this, master = &other] (int vfd) -> std::optional<const tinykvm::FileDescriptors::Entry*> {
 			return master->machine().fds().entry_for_vfd(vfd);
 		});
+	machine().fds().set_open_writable_callback(
+	[&] (std::string& path) -> bool {
+		return lookup_allowed_path(path, machine().fds().current_working_directory(),
+			config().allowed_paths, [](const Configuration::VirtualPath& vpath) { return vpath.writable; });
+	});
+	machine().fds().set_open_readable_callback(
+	[&] (std::string& path) -> bool {
+		return lookup_allowed_path(path, machine().fds().current_working_directory(),
+			config().allowed_paths, [](const Configuration::VirtualPath& vpath) { return vpath.readable; });
+	});
 	machine().fds().connect_socket_callback = other.machine().fds().connect_socket_callback;
 	machine().fds().bind_socket_callback = other.machine().fds().bind_socket_callback;
 	// When a VM is ephemeral we try to detect when a client
