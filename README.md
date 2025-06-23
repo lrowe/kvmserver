@@ -26,40 +26,42 @@ isolation.
 
 ## Benchmarks
 
+![](./bench.svg)
+
 ### Rust minimal http server
 
 | name                                  | average | p50   | p90   | p99   |
 | ------------------------------------- | ------- | ----- | ----- | ----- |
-| base                                  | 13 µs   | 11 µs | 17 µs | 20 µs |
+| native                                | 13 µs   | 11 µs | 17 µs | 20 µs |
 | kvmserver threads=1                   | 23 µs   | 20 µs | 29 µs | 33 µs |
 | kvmserver ephemeral threads=1         | 28 µs   | 28 µs | 30 µs | 37 µs |
 | kvmserver ephemeral threads=2         | 34 µs   | 33 µs | 37 µs | 51 µs |
 | kvmserver ephemeral threads=4         | 36 µs   | 35 µs | 39 µs | 57 µs |
-| kvmserver ephemeral threads=2 no tail | 28 µs   | 28 µs | 32 µs | 36 µs |
+| kvmserver ephemeral threads=2 no-tail | 28 µs   | 28 µs | 32 µs | 36 µs |
 
 ### Deno helloworld
 
 | name                                  | average | p50   | p90   | p99   |
 | ------------------------------------- | ------- | ----- | ----- | ----- |
-| base (reusing connection)             | 11 µs   | 10 µs | 14 µs | 16 µs |
-| base                                  | 17 µs   | 15 µs | 22 µs | 29 µs |
+| native (reusing connection)           | 11 µs   | 10 µs | 14 µs | 16 µs |
+| native                                | 17 µs   | 15 µs | 22 µs | 29 µs |
 | kvmserver threads=1                   | 33 µs   | 32 µs | 33 µs | 45 µs |
 | kvmserver ephemeral threads=1         | 50 µs   | 49 µs | 53 µs | 75 µs |
 | kvmserver ephemeral threads=2         | 58 µs   | 57 µs | 62 µs | 90 µs |
 | kvmserver ephemeral threads=4         | 60 µs   | 59 µs | 65 µs | 90 µs |
-| kvmserver ephemeral threads=2 no tail | 41 µs   | 38 µs | 46 µs | 59 µs |
+| kvmserver ephemeral threads=2 no-tail | 41 µs   | 38 µs | 46 µs | 59 µs |
 
-### Deno react renderer
+### Deno React page rendering
 
 | name                                  | average | p50    | p90    | p99    |
 | ------------------------------------- | ------- | ------ | ------ | ------ |
-| base (reusing connection)             | 642 µs  | 606 µs | 673 µs | 805 µs |
-| base                                  | 646 µs  | 619 µs | 670 µs | 820 µs |
+| native (reusing connection)           | 642 µs  | 606 µs | 673 µs | 805 µs |
+| native                                | 646 µs  | 619 µs | 670 µs | 820 µs |
 | kvmserver threads=1                   | 649 µs  | 619 µs | 674 µs | 798 µs |
 | kvmserver ephemeral threads=1         | 695 µs  | 689 µs | 712 µs | 790 µs |
 | kvmserver ephemeral threads=2         | 705 µs  | 704 µs | 722 µs | 755 µs |
 | kvmserver ephemeral threads=4         | 711 µs  | 710 µs | 728 µs | 758 µs |
-| kvmserver ephemeral threads=2 no tail | 639 µs  | 634 µs | 662 µs | 721 µs |
+| kvmserver ephemeral threads=2 no-tail | 639 µs  | 634 µs | 662 µs | 721 µs |
 
 ### Benmark details
 
@@ -252,9 +254,10 @@ podman-compose down --volumes
 
 ## Guest program considerations
 
-KVM Server is intended for running primarily single threaded guest programs.
-There is some basic threading support to allow guests to make progress when
-threads are used but threads should be avoided where possible.
+KVM Server is intended for running primarily single threaded guest programs with
+parallel execution handled with VM forking. There is some basic threading
+support to allow guests to make progress when threads are used but threads
+should be avoided where possible.
 
 For details see the integration tested example guest programs:
 

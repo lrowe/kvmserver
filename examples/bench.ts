@@ -1,3 +1,4 @@
+import * as echarts from "echarts";
 import { assertEquals } from "@std/assert";
 import { kvmServerCommand, waitForLine } from "./testutil.ts";
 
@@ -90,18 +91,20 @@ function waitProgram(proc: Deno.ChildProcess) {
 type NamedOhaResults = { name: string } & OhaResults;
 
 class BenchGroup {
-  groupName: string;
+  title: string;
   rows: NamedOhaResults[] = [];
-  cols: Record<string, (row: NamedOhaResults) => string> = {
+  cols: Record<string, (row: NamedOhaResults) => string | number> = {
     name: (r) => r.name,
-    average: (r) => `${Math.round(r.summary.average * 1_000_000)} µs`,
-    p50: (r) => `${Math.round(r.latencyPercentiles.p50 * 1_000_000)} µs`,
-    p90: (r) => `${Math.round(r.latencyPercentiles.p90 * 1_000_000)} µs`,
-    p99: (r) => `${Math.round(r.latencyPercentiles.p99 * 1_000_000)} µs`,
+    average: (r) => Math.round(r.summary.average * 1_000_000),
+    p50: (r) => Math.round(r.latencyPercentiles.p50 * 1_000_000),
+    p90: (r) => Math.round(r.latencyPercentiles.p90 * 1_000_000),
+    p99: (r) => Math.round(r.latencyPercentiles.p99 * 1_000_000),
   };
+  format = (_name: string, value: string | number) =>
+    typeof value === "number" ? `${value} µs` : value;
 
-  constructor(groupName: string) {
-    this.groupName = groupName;
+  constructor(title: string) {
+    this.title = title;
   }
 
   async bench(
@@ -123,23 +126,64 @@ class BenchGroup {
     }
   }
 
+  getData(): Record<keyof BenchGroup["cols"], string | number>[] {
+    return this.rows.map((r) =>
+      Object.fromEntries(
+        Object.entries(this.cols).map(([name, fn]) => [name, fn(r)]),
+      )
+    );
+  }
+
+  toChart() {
+    const chart = echarts.init(null, null, {
+      renderer: "svg",
+      ssr: true,
+      width: 600,
+      height: 400,
+    });
+    chart.setOption({
+      animation: false,
+      title: { text: this.title, left: "center" },
+      legend: { top: 30 },
+      tooltip: {},
+      dataset: {
+        dimensions: Object.keys(this.cols),
+        source: this.getData(),
+      },
+      xAxis: {
+        type: "category",
+        axisLabel: {
+          interval: 0,
+          formatter: (value: string) => value.replaceAll(" ", "\n"),
+        },
+      },
+      yAxis: { name: "µs", nameLocation: "middle", nameGap: 40, nameRotate: 0 },
+      series: Object.keys(this.cols).slice(1).map(() => ({ type: "bar" })),
+    });
+    const svg = chart.renderToSVGString();
+    chart.dispose();
+    return svg;
+  }
+
   toString() {
     return [
-      `### ${this.groupName}`,
+      `### ${this.title}`,
       `| ${Object.keys(this.cols).join(" | ")} |`,
       `| ${Object.keys(this.cols).map(() => "---").join(" | ")} |`,
-      ...this.rows.map((r) =>
-        `| ${Object.values(this.cols).map((fn) => fn(r)).join(" | ")} |`
+      ...this.getData().map((row) =>
+        `| ${
+          Object.keys(this.cols).map((k) => this.format(k, row[k])).join(" | ")
+        } |`
       ),
     ].join("\n");
   }
 }
 
-async function addBenches(groupName: string, program: string) {
-  const group = new BenchGroup(groupName);
+async function addBenches(title: string, program: string) {
+  const group = new BenchGroup(title);
 
   await group.bench(
-    "base (reusing connection)",
+    "native (reusing connection)",
     new Deno.Command(program, { args, cwd, stderr: "piped" }),
     waitListening,
     ["-c=1", `-z=${duration}`],
@@ -149,7 +193,7 @@ async function addBenches(groupName: string, program: string) {
   );
 
   await group.bench(
-    "base",
+    "native",
     new Deno.Command(program, { args, cwd, stderr: "piped" }),
     waitListening,
     ["--disable-keepalive", "-c=1", `-z=${duration}`],
@@ -203,7 +247,7 @@ async function addBenches(groupName: string, program: string) {
   );
 
   await group.bench(
-    "kvmserver ephemeral threads=2 no tail",
+    "kvmserver ephemeral threads=2 no-tail",
     kvmServerCommand({
       program,
       args,
@@ -221,21 +265,34 @@ async function addBenches(groupName: string, program: string) {
 }
 
 const httpserver = await addBenches(
-  "rust httpserver",
+  "Rust minimal http server",
   "./rust/target/release/httpserver",
 );
 const helloworld = await addBenches(
-  "deno helloworld",
+  "Deno helloworld",
   "./deno/target/helloworld",
 );
 const renderer = await addBenches(
-  "deno react renderer",
+  "Deno React page rendering",
   "./deno/target/renderer",
 );
 
-console.log();
-console.log(String(httpserver));
-console.log();
-console.log(String(helloworld));
-console.log();
-console.log(String(renderer));
+const md = `\
+![](./bench.svg)
+
+${httpserver}
+
+${helloworld}
+
+${renderer}
+`
+console.log(md);
+
+delete renderer.cols["average"];
+renderer.rows.splice(0, 1);
+renderer.rows.splice(1, 1);
+renderer.title += " native vs TinyKVM ephemeral VMs"
+const svg = renderer.toChart();
+await Deno.mkdir("target", { recursive: true });
+await Deno.writeTextFile("target/bench.svg", svg);
+await Deno.writeTextFile("target/bench.md", md);
