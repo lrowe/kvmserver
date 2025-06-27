@@ -122,3 +122,28 @@ const env = {
     },
   );
 }
+
+{
+  const common = {
+    cwd,
+    program: "./target/imagemagick",
+    allowAll,
+  };
+  const onResponse = async (response: Response) => {
+    assert(response.ok, "response.ok");
+    const bytes = await response.bytes();
+    assertEquals(bytes.length, 2385160);
+  };
+  Deno.test(
+    "imagemagick",
+    testHelloWorld({ ...common }, onResponse),
+  );
+  Deno.test(
+    "imagemagick ephemeral",
+    testHelloWorld({ ...common, ephemeral }, onResponse),
+  );
+  Deno.test(
+    "imagemagick ephemeral warmup",
+    testHelloWorld({ ...common, ephemeral, warmup }, onResponse),
+  );
+}
