@@ -73,7 +73,9 @@ export function waitForLine(
 
 export function testHelloWorld(
   options: KvmServerCommandOptions,
-  assertText: (text: string) => void = (text) => {
+  onResponse: (response: Response) => Promise<void> = async (response) => {
+    assert(response.ok, "response.ok");
+    const text = await response.text();
     assertEquals(text, "Hello, World!");
   },
 ) {
@@ -88,8 +90,6 @@ export function testHelloWorld(
     ]);
     using client = Deno.createHttpClient({ poolMaxIdlePerHost: 0 });
     const response = await fetch("http://127.0.0.1:8000/", { client });
-    assert(response.ok, "response.ok");
-    const text = await response.text();
-    assertText(text);
+    await onResponse(response);
   };
 }
