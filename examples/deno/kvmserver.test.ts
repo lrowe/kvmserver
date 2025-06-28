@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { assert, assertEquals } from "@std/assert";
 import { testHelloWorld } from "../testutil.ts";
 
@@ -145,5 +146,67 @@ const env = {
   Deno.test(
     "imagemagick ephemeral warmup",
     testHelloWorld({ ...common, ephemeral, warmup }, onResponse),
+  );
+}
+
+{
+  const makeTestDb = async () => {
+    const tmpdir = await Deno.makeTempDir({ prefix: "denosqlite" });
+    const path = `${tmpdir}/deno.sqlite`;
+    const common = {
+      cwd,
+      program: "deno",
+      args: ["run", "--allow-all", "sqlite.ts", path],
+      env,
+      allowAll,
+    };
+    const db = new DatabaseSync(path);
+    // Does not work with WAL mode.
+    //db.exec(`PRAGMA journal_mode = WAL;`);
+    db.exec(`CREATE TABLE IF NOT EXISTS requests (url TEXT)`);
+    return {
+      db,
+      common,
+      assertCount(n: number) {
+        const result = this.db.prepare(`SELECT count(*) FROM requests`).get();
+        assertEquals(result?.["count(*)"], n, "assertCount");
+      },
+      async [Symbol.asyncDispose]() {
+        this.db.close();
+        await Deno.remove(tmpdir, { recursive: true });
+      },
+    };
+  };
+  const onResponse = async (response: Response) => {
+    assert(response.ok, "response.ok");
+    const json = await response.json();
+    assertEquals(json.changes, 1);
+  };
+  Deno.test(
+    "sqlite",
+    async () => {
+      await using testDb = await makeTestDb();
+      await testHelloWorld({ ...testDb.common }, onResponse)();
+      testDb.assertCount(1);
+    },
+  );
+  Deno.test(
+    "sqlite ephemeral",
+    async () => {
+      await using testDb = await makeTestDb();
+      await testHelloWorld({ ...testDb.common, ephemeral }, onResponse)();
+      testDb.assertCount(1);
+    },
+  );
+  Deno.test(
+    "sqlite ephemeral warmup",
+    async () => {
+      await using testDb = await makeTestDb();
+      await testHelloWorld(
+        { ...testDb.common, ephemeral, warmup },
+        onResponse,
+      )();
+      testDb.assertCount(2);
+    },
   );
 }
