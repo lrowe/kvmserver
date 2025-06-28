@@ -106,20 +106,23 @@ const env = {
   };
   Deno.test(
     "http-upstream",
-    async (t) => {
+    async () => {
       await using _upstream = upstream();
-      await t.step(
-        "basic",
-        testHelloWorld({ ...common }),
-      );
-      await t.step(
-        "ephemeral",
-        testHelloWorld({ ...common, ephemeral }),
-      );
-      await t.step(
-        "ephemeral warmup",
-        testHelloWorld({ ...common, ephemeral, warmup }),
-      );
+      await testHelloWorld({ ...common })();
+    },
+  );
+  Deno.test(
+    "http-upstream ephemeral",
+    async () => {
+      await using _upstream = upstream();
+      await testHelloWorld({ ...common, ephemeral })();
+    },
+  );
+  Deno.test(
+    "http-upstream ephemeral warmup",
+    async () => {
+      await using _upstream = upstream();
+      await testHelloWorld({ ...common, ephemeral, warmup })();
     },
   );
 }
