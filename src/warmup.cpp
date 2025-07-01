@@ -56,6 +56,20 @@ void VirtualMachine::warmup()
 		}
 		return true; // Call epoll_wait
 	};
+	machine().fds().poll_callback =
+	[&](struct pollfd* fds, unsigned nfds, int timeout) {
+		if (freed_sockets >= NUM_WARMUP_THREADS * config().warmup_connect_requests) {
+			if (config().verbose) {
+				fprintf(stderr, "Warmed up the JIT compiler\n");
+			}
+			// If the listening socket is found, we are now waiting for
+			// requests, so we can fork a new VM.
+			this->set_waiting_for_requests(true);
+			this->machine().stop();
+			return false; // Don't call poll
+		}
+		return true; // Call poll
+	};
 
 	// Start the warmup client
 	this->begin_warmup_client();
@@ -67,15 +81,17 @@ void VirtualMachine::warmup()
 		fprintf(stderr, "The program did not wait for requests after warmup\n");
 		throw std::runtime_error("The program did not wait for requests after warmup");
 	}
-
-	// Run one last time to make sure the VM takes into
-	// account the remainder of the warmup requests
-	machine().run( config().max_boot_time );
+	// Return from the syscall
+	auto& cpu = machine().cpu();
+	auto& regs = cpu.registers();
+	regs.rax = 0;
+	cpu.set_registers(regs);
 
 	// Reset the warmup callbacks
 	machine().fds().accept_socket_callback = nullptr;
 	machine().fds().free_fd_callback = nullptr;
 	machine().fds().epoll_wait_callback = nullptr;
+	machine().fds().poll_callback = nullptr;
 
 	// Stop the warmup client
 	this->stop_warmup_client();
@@ -95,32 +111,32 @@ bool VirtualMachine::connect_and_send_requests(const sockaddr* serv_addr, sockle
 	}
 
 	int intra_connect_requests = config().warmup_intra_connect_requests;
+	char buffer[32768];
+	ssize_t bytes = 0;
 	for (int i = 0; i < intra_connect_requests; ++i)
 	{
-		std::string request = "GET " + config().warmup_path + " HTTP/1.1\r\nHost: localhost\r\n\r\n";
+		std::string request = "GET " + config().warmup_path + " HTTP/1.1\r\n"
+			+ "Host: localhost\r\n"
+			+ (intra_connect_requests == i + 1 ? "Connection: close\r\n" : "")
+			+ "\r\n";
 		if (send(sockfd, request.c_str(), request.size(), MSG_NOSIGNAL) < 0) {
 			fprintf(stderr, "Warmup: Failed to send request: %s\n", strerror(errno));
 			break;
 		}
 		char buffer[32768];
-		ssize_t bytes = recv(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL);
+		bytes = recv(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL);
 		if (bytes < 0) {
 			fprintf(stderr, "Warmup: Failed to receive data: %s\n", strerror(errno));
 			break;
 		} else if (bytes == 0) {
 			break; // Connection closed
 		}
-		while (bytes > 0) {
-			bytes = recv(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL | MSG_DONTWAIT);
-			if (bytes < 0) {
-				if (errno == EAGAIN || errno == EWOULDBLOCK) {
-					break; // No more data
-				}
-				fprintf(stderr, "Warmup: Failed to receive data: %s\n", strerror(errno));
-				break;
-			} else if (bytes == 0) {
-				break; // Connection closed
-			}
+	}
+	// Read until connection close
+	while (bytes > 0) {
+		bytes = recv(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL);
+		if (bytes < 0) {
+			fprintf(stderr, "Warmup: Failed to receive data: %s\n", strerror(errno));
 		}
 	}
 
