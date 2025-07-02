@@ -123,7 +123,6 @@ bool VirtualMachine::connect_and_send_requests(const sockaddr* serv_addr, sockle
 			fprintf(stderr, "Warmup: Failed to send request: %s\n", strerror(errno));
 			break;
 		}
-		char buffer[32768];
 		bytes = recv(sockfd, buffer, sizeof(buffer), MSG_NOSIGNAL);
 		if (bytes < 0) {
 			fprintf(stderr, "Warmup: Failed to receive data: %s\n", strerror(errno));
