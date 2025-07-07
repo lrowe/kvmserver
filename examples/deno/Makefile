@@ -1,19 +1,28 @@
 .PHONY: build check clean fmt lint test
-build:
+build: target/helloworld target/renderer target/imagemagick target/ca.crt
+target/helloworld:
 	mkdir -p target
 	deno compile \
 		--allow-all \
 		--v8-flags=-predictable,--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--max-old-space-size=64,--max-semi-space-size=64 \
-		-o "target/helloworld" \
+		-o target/helloworld \
 		'data:,const arg = Deno.args[0] || "8000"; Deno.serve(arg.includes("/") ? { path: arg } : { port: Number(arg) }, () => new Response("Hello, World!"))'
+target/renderer:
+	mkdir -p target
 	deno compile \
 		--no-check \
 		--allow-all \
 		--v8-flags=-predictable,--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--max-old-space-size=256,--max-semi-space-size=256 \
-		-o "target/renderer" \
+		-o target/renderer \
 		https://raw.githubusercontent.com/lrowe/react-server-render-benchmark/8866042d1944e98f8552f78458a553b7d3a94af1/renderer.mjs
+target/deno_city.jpeg:
+	mkdir -p target
 	curl -L -o target/deno_city.jpeg https://artwork.deno.dev/images/artwork/deno_city.jpeg
+target/magick.wasm.bin:
+	mkdir -p target
 	curl -L -o target/magick.wasm.bin "https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.35/dist/magick.wasm"
+target/imagemagick: target/deno_city.jpeg target/magick.wasm.bin
+	mkdir -p target
 	deno compile \
 		--allow-all \
 		--include target/magick.wasm.bin \
@@ -21,10 +30,13 @@ build:
 		--v8-flags=--predictable \
 		-o target/imagemagick \
 		imagemagick.ts
+target/ca.crt target/ca.key target/server.crt target/server/key &:
+	mkdir -p target
+	cd target && ../mkcert.sh
 check:
 	deno check
 clean:
-	rm -rf target
+	rm -rf .cache target
 fmt:
 	deno fmt
 lint:

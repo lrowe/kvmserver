@@ -88,7 +88,7 @@ const env = {
   const common = {
     cwd,
     program: "deno",
-    args: ["run", "--allow-all", "http-upstream.ts"],
+    args: ["run", "--allow-all", "upstream.ts", "http://127.0.0.1:8001/"],
     env,
     allowAll,
   };
@@ -120,6 +120,54 @@ const env = {
   );
   Deno.test(
     "http-upstream ephemeral warmup",
+    async () => {
+      await using _upstream = upstream();
+      await testHelloWorld({ ...common, ephemeral, warmup })();
+    },
+  );
+}
+
+{
+  const common = {
+    cwd,
+    program: "deno",
+    args: ["run", "--allow-all", "upstream.ts", "https://127.0.0.1:8001/"],
+    env: {
+      ...env,
+      DENO_CERT: "target/ca.crt",
+    },
+    allowAll,
+  };
+  const cert = Deno.readTextFileSync("target/server.crt");
+  const key = Deno.readTextFileSync("target/server.key");
+  const upstream = () => {
+    const server = Deno.serve(
+      { port: 8001, cert, key },
+      () => new Response("Hello, World!"),
+    );
+    return {
+      [Symbol.asyncDispose]: () => {
+        server.shutdown();
+        return server.finished;
+      },
+    };
+  };
+  Deno.test(
+    "https-upstream",
+    async () => {
+      await using _upstream = upstream();
+      await testHelloWorld({ ...common })();
+    },
+  );
+  Deno.test(
+    "https-upstream ephemeral",
+    async () => {
+      await using _upstream = upstream();
+      await testHelloWorld({ ...common, ephemeral })();
+    },
+  );
+  Deno.test(
+    "https-upstream ephemeral warmup",
     async () => {
       await using _upstream = upstream();
       await testHelloWorld({ ...common, ephemeral, warmup })();
