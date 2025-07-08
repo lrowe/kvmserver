@@ -134,12 +134,16 @@ const env = {
     args: ["run", "--allow-all", "upstream.ts", "https://127.0.0.1:8001/"],
     env: {
       ...env,
-      DENO_CERT: "target/ca.crt",
+      DENO_CERT: import.meta.dirname + "/target/ca.crt",
     },
     allowAll,
   };
-  const cert = Deno.readTextFileSync("target/server.crt");
-  const key = Deno.readTextFileSync("target/server.key");
+  const cert = Deno.readTextFileSync(
+    import.meta.dirname + "/target/server.crt",
+  );
+  const key = Deno.readTextFileSync(
+    import.meta.dirname + "/target/server.key",
+  );
   const upstream = () => {
     const server = Deno.serve(
       { port: 8001, cert, key },
