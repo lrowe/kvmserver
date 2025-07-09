@@ -28,6 +28,10 @@ isolation.
 
 ![](./bench.svg)
 
+<details>
+
+<summary>Detailed benchmark results</summary>
+
 ### Rust minimal http server
 
 | name                                  | average | p50   | p90   | p99   |
@@ -77,6 +81,8 @@ isolation.
 - The Rust minimal http server always closes connections.
 - Benchmarks were run on AMD Ryzen 9 7950X (32) @ 5.881Ghz with deno 2.3.6.
 
+</details>
+
 ## Performance characterization
 
 The React benchmark runs with 10µs of connection creation overhead, 15µs of
@@ -98,7 +104,9 @@ connection can be significant so best performance is achieved by listening on a
 unix socket and serving incoming tcp connections through a reverse proxy to
 enable client connection reuse.
 
-Running under nested virtualization incurs additional overhead of around 200µs.
+Nested virtualization incurs additional overhead that will vary depending on the
+cpu security mitigations applied. On an AMD Ryzen 7 7840HS running on Linux 6.11
+we see around 200µs of additional overhead running nested under QEMU.
 
 ## Memory usage
 
@@ -265,148 +273,3 @@ For details see the integration tested example guest programs:
 - [Lune (Luau)](examples/lune)
 - [Python](examples/python)
 - [Rust](examples/rust)
-
-## How it works
-
-```mermaid
----
-title: Application is run within VM until it polls for a connection
-config:
-  look: handDrawn
----
-graph LR
-  subgraph Incoming[ ]
-    C1([Connection 1])
-    C2([Connection 2])
-  end
-  Q[Accept Queue]
-  subgraph Kvmserver
-    W1[Worker]
-  end
-  C1 ~~~ Q
-  C2 ~~~ Q
-  Q --> W1
-style Incoming fill:transparent, stroke-width:0px
-style C1 fill:transparent, stroke-width:0px, color:transparent
-style C2 fill:transparent, stroke-width:0px, color:transparent
-```
-
-```mermaid
----
-title: VM is paused and ephemeral workers are forked
-config:
-  look: handDrawn
----
-graph LR
-  subgraph Incoming[ ]
-    C1([Connection 1])
-    C2([Connection 2])
-  end
-  Q[Accept Queue]
-  subgraph Kvmserver
-    W1[Worker 1]
-    W2[Worker 2]
-  end
-  C1 ~~~ Q
-  C2 ~~~ Q
-  Q --> W1
-  Q --> W2
-style Incoming fill:transparent, stroke-width:0px
-style C1 fill:transparent, stroke-width:0px, color:transparent
-style C2 fill:transparent, stroke-width:0px, color:transparent
-```
-
-```mermaid
----
-title: Ephemeral worker accepts a new connection
-config:
-  look: handDrawn
----
-graph LR
-  subgraph Incoming[ ]
-    C1([Connection 1])
-    C2([Connection 2])
-  end
-  Q[Accept Queue]
-  subgraph Kvmserver
-    W1[Worker 1]
-    W2[Worker 2]
-  end
-  C1 ==> Q
-  C2 --> Q
-  Q ==> W1
-  Q --> W2
-style Incoming fill:transparent, stroke-width:0px
-```
-
-```mermaid
----
-title: And is prevented from accepting more connections
-config:
-  look: handDrawn
----
-graph LR
-  subgraph Incoming[ ]
-    C1([Connection 1])
-    C2([Connection 2])
-  end
-  Q[Accept Queue]
-  subgraph Kvmserver
-    W1[Worker 1]
-    W2[Worker 2]
-  end
-  C1 ==> W1
-  C1 ~~~ Q
-  C2 --> Q
-  Q .- W1
-  Q --> W2
-style Incoming fill:transparent, stroke-width:0px
-```
-
-```mermaid
----
-title: Ephemeral worker is reset at connection close
-config:
-  look: handDrawn
----
-graph LR
-  subgraph Incoming[ ]
-    C1([Connection 1])
-    C2([Connection 2])
-  end
-  Q[Accept Queue]
-  subgraph Kvmserver
-    W1[Worker 1]
-    W2[Worker 2]
-  end
-  C1 ~~~ Q
-  C2 --> Q
-  Q -.- W1
-  Q --> W2
-style Incoming fill:transparent, stroke-width:0px
-style C1 text-decoration:line-through
-style W1 stroke-dasharray: 5 5
-```
-
-```mermaid
----
-title: Ready to accept another connection
-config:
-  look: handDrawn
----
-graph LR
-  subgraph Incoming[ ]
-    C3([Connection 3])
-    C2([Connection 2])
-  end
-  Q[Accept Queue]
-  subgraph Kvmserver
-    W1[Worker 1]
-    W2[Worker 2]
-  end
-  C3 --> Q
-  C2 --> Q
-  Q --> W1
-  Q --> W2
-style Incoming fill:transparent, stroke-width:0px
-```
