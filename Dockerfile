@@ -9,8 +9,8 @@ RUN set -e; \
     cmake /usr/local/src/kvmserver -DCMAKE_BUILD_TYPE=Release; \
     make -j 8;
 
-# podman build --target bin -t kvmserver:bin .
-# docker build --target bin -t kvmserver:bin .
+# podman build --target bin -t ghcr.io/libriscv/kvmserver:bin .
+# docker build --target bin -t ghcr.io/libriscv/kvmserver:bin .
 FROM scratch AS bin
 LABEL org.opencontainers.image.description="kvmserver only the binary"
 LABEL org.opencontainers.image.licenses=GPL-3.0-or-later

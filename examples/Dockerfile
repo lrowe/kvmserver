@@ -2,10 +2,10 @@
 
 # Run with the kvmserver:bin image mounted as /mnt.
 
-# podman build -t kvmserver:test examples
-# podman run --rm --mount type=image,src=kvmserver:bin,dst=/mnt --device /dev/kvm --group-add keep-groups -it kvmserver:test
-# docker build -t kvmserver:test examples
-# KVM_GID=$(getent group kvm | cut -d: -f3) docker run --rm --mount type=image,src=kvmserver:bin,dst=/mnt --device /dev/kvm --group-add $KVM_GID -it kvmserver:test
+# podman build -t ghcr.io/libriscv/kvmserver:test examples
+# podman run --rm --mount type=image,src=ghcr.io/libriscv/kvmserver:bin,dst=/mnt --device /dev/kvm --group-add keep-groups -it ghcr.io/libriscv/kvmserver:test
+# docker build -t ghcr.io/libriscv/kvmserver:test examples
+# KVM_GID=$(getent group kvm | cut -d: -f3) docker run --rm --mount type=image,src=ghcr.io/libriscv/kvmserver:bin,dst=/mnt --device /dev/kvm --group-add $KVM_GID -it ghcr.io/libriscv/kvmserver:test
 FROM debian:bookworm-slim
 LABEL org.opencontainers.image.description="kvmserver examples test runner"
 RUN set -e; \

@@ -16,7 +16,7 @@ services:
       dockerfile_inline: |
         FROM debian:bookworm-slim
         COPY --from=denoland/deno:bin-2.4.0 /deno /usr/local/bin/
-        COPY --from=kvmserver:bin /kvmserver /usr/local/bin/
+        COPY --from=ghcr.io/libriscv/kvmserver:bin /kvmserver /usr/local/bin/
     command:
       - /bin/bash
       - -c
