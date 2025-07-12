@@ -13,7 +13,7 @@ if [ ! -f "target/oha" ]; then
   chmod +x target/oha
 fi
 if [ ! -f "target/deno" ]; then
-  curl -L https://github.com/denoland/deno/releases/download/v2.4.0/deno-x86_64-unknown-linux-gnu.zip | gunzip > target/deno
+  curl -L https://github.com/denoland/deno/releases/download/v2.4.1/deno-x86_64-unknown-linux-gnu.zip | gunzip > target/deno
   chmod +x target/deno
 fi
 cloud-localds target/seed.img user-data.yaml metadata.yaml
