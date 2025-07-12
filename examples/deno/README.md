@@ -23,5 +23,5 @@
 - Recommended v8 flags (memory usage will depend on program):
 
 ```
---v8-flags=-predictable,--stress-maglev,--prepare-always-turbofan,--always-turbofan,--always-sparkplug,--max-old-space-size=256,--max-semi-space-size=256
+--v8-flags=-predictable,--max-old-space-size=256,--max-semi-space-size=256
 ```

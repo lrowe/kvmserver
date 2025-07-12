@@ -10,7 +10,7 @@ const env = {
   // Could not initialize cache database '$HOME/.cache/deno/dep_analysis_cache_v2', deleting and retrying...
   // (SqliteFailure(Error { code: FileLockingProtocolFailed, extended_code: 15 }, Some("locking protocol")))
   DENO_DIR: ".cache/deno",
-  DENO_V8_FLAGS: "--single-threaded",
+  DENO_V8_FLAGS: "--predictable",
 };
 
 {
