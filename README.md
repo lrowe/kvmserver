@@ -264,8 +264,8 @@ podman-compose down --volumes
 
 KVM Server is intended for running primarily single threaded guest programs with
 parallel execution handled with VM forking. There is some basic threading
-support to allow guests to make progress when threads are used but threads
-should be avoided where possible.
+support to allow guests to make progress when threads are used during startup
+but threads should be avoided where possible.
 
 For details see the integration tested example guest programs:
 
