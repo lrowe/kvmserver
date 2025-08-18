@@ -66,8 +66,8 @@ const env = {
     allowAll,
   };
   const onResponse = async (response: Response) => {
-    assert(response.ok, "response.ok");
     const text = await response.text();
+    assert(response.ok, "response.ok");
     assertEquals(text.length, 31099);
   };
   Deno.test(
@@ -186,8 +186,8 @@ const env = {
     allowAll,
   };
   const onResponse = async (response: Response) => {
-    assert(response.ok, "response.ok");
     const bytes = await response.bytes();
+    assert(response.ok, "response.ok");
     assertEquals(bytes.length, 2385160);
   };
   Deno.test(
@@ -233,8 +233,8 @@ const env = {
     };
   };
   const onResponse = async (response: Response) => {
-    assert(response.ok, "response.ok");
     const json = await response.json();
+    assert(response.ok, "response.ok");
     assertEquals(json.changes, 1);
   };
   Deno.test(

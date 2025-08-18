@@ -74,8 +74,8 @@ export function waitForLine(
 export function testHelloWorld(
   options: KvmServerCommandOptions,
   onResponse: (response: Response) => Promise<void> = async (response) => {
-    assert(response.ok, "response.ok");
     const text = await response.text();
+    assert(response.ok, "response.ok");
     assertEquals(text, "Hello, World!");
   },
 ) {
