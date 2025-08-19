@@ -123,6 +123,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 		.split_hugepages = false,
 		.relocate_fixed_mmap = config.relocate_fixed_mmap,
 		.executable_heap = config.executable_heap,
+		.mmap_backed_files = false,
 		.hugepages_arena_size = config.hugepage_arena_size,
 	}),
 	m_config(config),
@@ -534,12 +535,27 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		end = std::chrono::high_resolution_clock::now();
 		result.initialization_time += std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 	}
+	catch (const tinykvm::MemoryException& me)
+	{
+		if (config().verbose) {
+			machine().print_pagetables();
+		}
+		fprintf(stderr,
+			"Machine not initialized properly: %s\n", name().c_str());
+		fprintf(stderr,
+			"Memory error: %s Address: 0x%lX Size: %zu OOM: %d\n",
+			me.what(), me.addr(), me.size(), me.is_oom());
+		if (getenv("DEBUG") != nullptr) {
+			open_debugger();
+		}
+		throw; /* IMPORTANT: Re-throw */
+	}
 	catch (const tinykvm::MachineException& me)
 	{
 		fprintf(stderr,
 			"Machine not initialized properly: %s\n", name().c_str());
 		fprintf(stderr,
-			"Error: %s Data: 0x%#lX\n", me.what(), me.data());
+			"Error: %s Data: 0x%lX\n", me.what(), me.data());
 		if (getenv("DEBUG") != nullptr) {
 			open_debugger();
 		}

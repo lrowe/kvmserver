@@ -3,9 +3,7 @@
 #include "mmap_file.hpp"
 #include <thread>
 #include "vm.hpp"
-extern std::vector<uint8_t> file_loader(const std::string& filename);
 static std::array<std::atomic<uint64_t>, 64> reset_counters;
-
 
 int main(int argc, char* argv[], char* envp[])
 {
@@ -75,6 +73,10 @@ int main(int argc, char* argv[], char* envp[])
 				} catch (const tinykvm::MachineTimeoutException& me) {
 					fprintf(stderr, "*** Main VM timed out\n");
 					fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
+					failure = true;
+				} catch (const tinykvm::MemoryException& me) {
+					fprintf(stderr, "*** Main VM memory error: %s Addr: 0x%#lX Size: %zu OOM: %d\n",
+						me.what(), me.addr(), me.size(), me.is_oom());
 					failure = true;
 				} catch (const tinykvm::MachineException& me) {
 					fprintf(stderr, "*** Main VM Error: %s Data: 0x%#lX\n",
