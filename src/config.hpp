@@ -27,6 +27,7 @@ struct Configuration
 	uint64_t hugepage_arena_size = 0; /* Megabytes */
 	uint64_t hugepage_requests_arena = 0; /* Megabytes */
 	bool     executable_heap = true;
+	bool     mmap_backed_files = false; /* Use mmap for files */
 	bool     hugepages    = false;
 	bool     split_hugepages = true;
 	bool     transparent_hugepages = false;
