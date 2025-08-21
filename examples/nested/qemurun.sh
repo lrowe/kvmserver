@@ -1,6 +1,7 @@
 #!/bin/bash
 # https://documentation.ubuntu.com/public-images/public-images-how-to/launch-qcow-with-qemu/
 # https://powersj.io/posts/ubuntu-qemu-cli/
+# Reuses your local binary so you must use an image with a glibc of at least that.
 set -e
 trap 'kill 0' EXIT
 mkdir -p target
@@ -9,11 +10,11 @@ if [ ! -f "target/$IMG" ]; then
   curl -L -o "target/$IMG" https://cloud-images.ubuntu.com/minimal/releases/noble/release/$IMG
 fi
 if [ ! -f "target/oha" ]; then
-  curl -L -o target/oha https://github.com/hatoo/oha/releases/download/v1.8.0/oha-linux-amd64-pgo
+  curl -L -o target/oha https://github.com/hatoo/oha/releases/download/v1.9.0/oha-linux-amd64-pgo
   chmod +x target/oha
 fi
 if [ ! -f "target/deno" ]; then
-  curl -L https://github.com/denoland/deno/releases/download/v2.4.1/deno-x86_64-unknown-linux-gnu.zip | gunzip > target/deno
+  curl -L https://github.com/denoland/deno/releases/download/v2.4.5/deno-x86_64-unknown-linux-gnu.zip | gunzip > target/deno
   chmod +x target/deno
 fi
 cloud-localds target/seed.img user-data.yaml metadata.yaml
