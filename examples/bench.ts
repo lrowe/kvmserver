@@ -61,7 +61,7 @@ async function oha(
       ...ohaArgs,
       "--wait-ongoing-requests-after-deadline",
       "--no-tui",
-      "--json",
+      "--output-format=json",
       `--unix-socket=${unixSocket}`,
       "http://127.0.0.1:8000/",
     ],
