@@ -1,5 +1,6 @@
 **/.build
 **/.cache
 **/.venv
+**/node_modules
 **/target
 **/__pycache__

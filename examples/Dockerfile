@@ -23,6 +23,8 @@ ENV UV_NO_CACHE=true \
     UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python
 COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /usr/local/bin/
 RUN uv python install 3.13.7
+RUN curl -fsSL https://github.com/bytecodealliance/wasmtime/releases/download/v35.0.0/wasmtime-v35.0.0-x86_64-linux.tar.xz \
+    | tar -xJC /usr/local/bin/ --strip-components=1 --wildcards "*/wasmtime"
 ADD --chmod=755 https://github.com/hatoo/oha/releases/download/v1.9.0/oha-linux-amd64-pgo /usr/local/bin/oha
 COPY --from=denoland/deno:bin-2.4.5 /deno /usr/local/bin/
 # Must run as non-root user to avoid Deno.Command setgroups(0, NULL) https://github.com/denoland/deno/issues/29770

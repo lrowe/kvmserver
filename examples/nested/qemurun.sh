@@ -17,6 +17,10 @@ if [ ! -f "target/deno" ]; then
   curl -L https://github.com/denoland/deno/releases/download/v2.4.5/deno-x86_64-unknown-linux-gnu.zip | gunzip > target/deno
   chmod +x target/deno
 fi
+if [ ! -f "target/wasmtime" ]; then
+  curl -fsSL https://github.com/bytecodealliance/wasmtime/releases/download/v35.0.0/wasmtime-v35.0.0-x86_64-linux.tar.xz \
+    | tar -xJC target/ --strip-components=1 --wildcards "*/wasmtime"
+fi
 cloud-localds target/seed.img user-data.yaml metadata.yaml
 exec qemu-system-x86_64  \
   -machine accel=kvm,type=q35 \

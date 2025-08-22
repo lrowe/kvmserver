@@ -1,0 +1,8 @@
+{
+  "name": "wasmtime-component-js",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@bytecodealliance/componentize-js": "^0.18.4"
+  }
+}
