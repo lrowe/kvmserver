@@ -17,7 +17,8 @@ target/renderer.wasm: node_modules/.bin/componentize-js target/renderer.mjs
 	mkdir -p target
 	node_modules/.bin/componentize-js -w wit -o target/renderer.wasm target/renderer.mjs
 check: ;
-clean: ;
+clean:
+	rm -rf node_modules target
 fmt: ;
 lint: ;
 test: ;
