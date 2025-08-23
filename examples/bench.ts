@@ -304,9 +304,9 @@ const renderer = await addBenches(
   "./deno/target/renderer",
 );
 const wasmtime = await addWasmBenches("Wasmtime ComponentJS StarlingMonkey", {
-  "./wasmtime-component-js/target/helloworld.wasm": "helloworld",
-  "./wasmtime-component-js/target/helloworldaot.wasm": "helloworld aot",
-  "./wasmtime-component-js/target/renderer.wasm": "React page rendering",
+  "./wasmtime/target/helloworld.wasm": "helloworld",
+  "./wasmtime/target/helloworldaot.wasm": "helloworld aot",
+  "./wasmtime/target/renderer.wasm": "React page rendering",
 });
 
 const md = `\
