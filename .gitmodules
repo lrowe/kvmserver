@@ -4,3 +4,9 @@
 [submodule "ext/CLI11"]
 	path = ext/CLI11
 	url = https://github.com/CLIUtils/CLI11.git
+[submodule "examples/wasmtime-rust/ext/hello-wasi-http"]
+	path = examples/wasmtime-rust/ext/hello-wasi-http
+	url = https://github.com/sunfishcode/hello-wasi-http.git
+[submodule "examples/wasmtime/ext/hello-wasi-http"]
+	path = examples/wasmtime/ext/hello-wasi-http
+	url = https://github.com/sunfishcode/hello-wasi-http.git

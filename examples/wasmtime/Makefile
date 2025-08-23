@@ -1,5 +1,7 @@
 .PHONY: build check clean fmt lint test
-build: target/helloworld.wasm target/helloworldaot.wasm target/renderer.wasm
+build: ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm target/helloworld.wasm target/helloworldaot.wasm target/renderer.wasm
+ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm:
+	cd ext/hello-wasi-http && cargo build --release --target wasm32-wasip2
 node_modules/.bin/componentize-js:
 	npm install
 	# https://github.com/bytecodealliance/jco/pull/956
@@ -18,7 +20,7 @@ target/renderer.wasm: node_modules/.bin/componentize-js target/renderer.mjs
 	node_modules/.bin/componentize-js -w wit -o target/renderer.wasm target/renderer.mjs
 check: ;
 clean:
-	rm -rf node_modules target
+	rm -rf ext/hello-wasi-http/target node_modules target
 fmt: ;
 lint: ;
 test: ;

@@ -303,9 +303,10 @@ const renderer = await addBenches(
   "Deno React page rendering",
   "./deno/target/renderer",
 );
-const wasmtime = await addWasmBenches("Wasmtime ComponentJS StarlingMonkey", {
-  "./wasmtime/target/helloworld.wasm": "helloworld",
-  "./wasmtime/target/helloworldaot.wasm": "helloworld aot",
+const wasmtime = await addWasmBenches("Wasmtime serve", {
+  "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm": "helloworld.rs",
+  "./wasmtime/target/helloworld.wasm": "helloworld.js",
+  "./wasmtime/target/helloworldaot.wasm": "helloworld.js aot",
   "./wasmtime/target/renderer.wasm": "React page rendering",
 });
 

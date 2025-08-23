@@ -13,8 +13,11 @@ RUN set -e; \
     apt-get update; \
     apt-get -y install curl g++ gcc libc6-dev make rustup xz-utils; \
     rm -rf /var/lib/apt/lists/*;
+ENV RUSTUP_HOME=/usr/local/share/rustup
+ENV RUSTUP_AUTO_INSTALL=0
 ENV RUSTUP_TOOLCHAIN=1.89.0
 RUN rustup install $RUSTUP_TOOLCHAIN
+RUN rustup target add wasm32-wasip2
 RUN curl -fsSL https://github.com/lune-org/lune/releases/download/v0.10.1/lune-0.10.1-linux-x86_64.zip \
     | gunzip -c > /usr/local/bin/lune \
     && chmod +x /usr/local/bin/lune
