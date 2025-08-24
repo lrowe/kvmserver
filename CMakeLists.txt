@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(kvmserver CXX)
 
-add_subdirectory(ext/tinykvm tinykvm)
+add_subdirectory(ext/tinykvm tinykvm EXCLUDE_FROM_ALL)
 add_subdirectory(ext/CLI11)
 
 add_executable(kvmserver
