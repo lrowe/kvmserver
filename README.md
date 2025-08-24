@@ -110,9 +110,9 @@ we see around 200µs of additional overhead running nested under QEMU.
 
 ## Memory usage
 
-KVM server forks are very memory efficient since they only allocate
-pages written during a request (which are reset afterwards). This is great for
-large programs like Deno, as a large RSS can be amortized over many forked VMs.
+KVM server forks are very memory efficient since they only allocate pages
+written during a request (which are reset afterwards). This is great for large
+programs like Deno, as a large RSS can be amortized over many forked VMs.
 
 The main program and all dynamically linked shared objects are shared privately
 with the VM in a copy-on-write manner, saving substantially on memory usage and
@@ -126,8 +126,8 @@ preventing any changes to be written back to disk.
 
 ## Runtime requirements
 
-- Access to /dev/kvm is required. This normally requires adding your user to the `kvm`
-  group. Changes to group membership usually take effect at next login.
+- Access to /dev/kvm is required. This normally requires adding your user to the
+  `kvm` group. Changes to group membership usually take effect at next login.
 
 ## Command line arguments
 
