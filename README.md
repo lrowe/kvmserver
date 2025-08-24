@@ -1,10 +1,10 @@
-# Kvmserver - Fast per-request isolation for Linux executables with TinyKVM
+# KVM Server - Fast per-request isolation for Linux executables with TinyKVM
 
-KVM Server applies [TinyKVM](https://github.com/varnish/tinykvm)'s fast
+KVM server applies [TinyKVM](https://github.com/varnish/tinykvm)'s fast
 sandboxing technology to existing unmodified Linux server executables in order
 to provide per request isolation with extremely low overhead.
 
-KVM Server intercepts the programs epoll event loop, and guides new accepted
+KVM server intercepts the programs epoll event loop, and guides new accepted
 connections onto tiny forked instances of the sandboxed process. After each
 request concludes, TinyKVM resets the guest to a pristine state far more quickly
 than Linux is able to fork a process. TinyKVM is able to achieve such extremely
@@ -110,24 +110,23 @@ we see around 200µs of additional overhead running nested under QEMU.
 
 ## Memory usage
 
-Kvmserver forks are very memory efficient since they only need allocate for
+KVM server forks are very memory efficient since they only allocate
 pages written during a request (which are reset afterwards). This is great for
-largely single-threaded JITs like V8 since a large RSS can be amortized over
-many forked VMs.
+large programs like Deno, as a large RSS can be amortized over many forked VMs.
 
-A simple benchmark rendering the same page over and over is the best case
-scenario. Expect real-world usage to touch more pages, but will still see
-substantial savings.
+The main program and all dynamically linked shared objects are shared privately
+with the VM in a copy-on-write manner, saving substantially on memory usage and
+preventing any changes to be written back to disk.
 
 | Program                  | RSS    | Reset   |
 | ------------------------ | ------ | ------- |
 | Rust minimal http server | 9 MB   | 68 KB   |
-| Deno hello world         | 102 MB | 452 KB  |
-| Deno react renderer      | 162 MB | 2324 KB |
+| Deno hello world         | 56 MB  | 452 KB  |
+| Deno react renderer      | 107 MB | 2324 KB |
 
 ## Runtime requirements
 
-- Access to /dev/kvm is required. This normally requires your user to the `kvm`
+- Access to /dev/kvm is required. This normally requires adding your user to the `kvm`
   group. Changes to group membership usually take effect at next login.
 
 ## Command line arguments
