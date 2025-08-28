@@ -65,6 +65,7 @@ private:
 	bool m_ephemeral = false;
 	bool m_reset_needed = false;
 	bool m_waiting_for_requests = false;
+	bool m_blocking_connections = false;
 	// The tracked client fd for ephemeral VMs
 	int m_tracked_client_fd = -1;
 	int m_tracked_client_vfd = -1;

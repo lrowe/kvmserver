@@ -256,6 +256,19 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	// with a clean slate.
 	if (this->m_ephemeral)
 	{
+		machine().fds().accept_callback =
+		[this](int vfd, int fd, int flags) {
+			if (this->m_blocking_connections) {
+					if (UNLIKELY(config().verbose_syscalls)) {
+						fprintf(stderr, "accept4: fd %d (%d) is not accepting connections\n", vfd, fd);
+					}
+					auto& regs = machine().registers();
+					regs.rax = -EAGAIN;
+					machine().set_registers(regs);
+					return false; // Don't call accept4
+			}
+			return true; // Call accept4
+		};
 		machine().fds().accept_socket_callback =
 		[this](int listener_vfd, int listener_fd, int fd, struct sockaddr_storage& addr, socklen_t& addrlen) {
 			if (this->m_tracked_client_vfd != -1) {
@@ -269,7 +282,7 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 				printf("Forked VM %u accepted connection on vfd %d (%d)\n",
 					this->m_reqid, this->m_tracked_client_vfd, fd);
 			}
-			machine().fds().set_accepting_connections(false);
+			this->m_blocking_connections = true;
 			return this->m_tracked_client_vfd;
 		};
 		machine().fds().free_fd_callback =
@@ -307,7 +320,7 @@ void VirtualMachine::reset_to(const VirtualMachine& other)
 
 	this->m_tracked_client_fd = -1;
 	this->m_tracked_client_vfd = -1;
-	machine().fds().set_accepting_connections(true);
+	this->m_blocking_connections = false;
 }
 
 VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warmup_callback, bool just_one_vm)
@@ -397,7 +410,6 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			}
 			return true; // Call poll()
 		};
-
 		// Continue/resume or run through main()
 		if (getenv("DEBUG") != nullptr) {
 			open_debugger();
@@ -477,6 +489,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			machine().fds().free_fd_callback = nullptr;
 			machine().fds().epoll_wait_callback = nullptr;
 			machine().fds().poll_callback = nullptr;
+			machine().fds().accept_callback = nullptr;
 			return result;
 		}
 		else
