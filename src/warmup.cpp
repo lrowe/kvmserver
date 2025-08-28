@@ -74,6 +74,8 @@ void VirtualMachine::warmup()
 	// Start the warmup client
 	this->begin_warmup_client();
 
+	this->restart_poll_syscall();
+
 	// Run the VM until it stops
 	machine().run( config().max_boot_time );
 	// Make sure the program is waiting for requests
@@ -81,17 +83,6 @@ void VirtualMachine::warmup()
 		fprintf(stderr, "The program did not wait for requests after warmup\n");
 		throw std::runtime_error("The program did not wait for requests after warmup");
 	}
-	// Return from the syscall
-	auto& cpu = machine().cpu();
-	auto& regs = cpu.registers();
-	regs.rax = 0;
-	cpu.set_registers(regs);
-
-	// Reset the warmup callbacks
-	machine().fds().accept_socket_callback = nullptr;
-	machine().fds().free_fd_callback = nullptr;
-	machine().fds().epoll_wait_callback = nullptr;
-	machine().fds().poll_callback = nullptr;
 
 	// Stop the warmup client
 	this->stop_warmup_client();

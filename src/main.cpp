@@ -65,6 +65,8 @@ int main(int argc, char* argv[], char* envp[])
 		// Non-ephemeral single-threaded - we already have a VM
 		if (just_one_vm)
 		{
+			vm.restart_poll_syscall();
+
 			while (true)
 			{
 				bool failure = false;

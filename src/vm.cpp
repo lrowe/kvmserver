@@ -482,67 +482,28 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		// Resume measuring initialization time
 		start = std::chrono::high_resolution_clock::now();
 
-		if (just_one_vm)
+		// Reset the callbacks
+		machine().fds().accept_socket_callback = nullptr;
+		machine().fds().free_fd_callback = nullptr;
+		machine().fds().epoll_wait_callback = nullptr;
+		machine().fds().poll_callback = nullptr;
+		machine().fds().accept_callback = nullptr;
+		machine().fds().set_preempt_epoll_wait(false);
+
+		if (!just_one_vm)
 		{
-			// Don't turn the VM into a forkable master VM
-			machine().fds().set_preempt_epoll_wait(false);
-			machine().fds().free_fd_callback = nullptr;
-			machine().fds().epoll_wait_callback = nullptr;
-			machine().fds().poll_callback = nullptr;
-			machine().fds().accept_callback = nullptr;
-			return result;
+			// The VM is currently paused in kernel mode in a system call handler
+			// so we need manully return to user mode
+			auto& regs = machine().registers();
+			// Emulate SYSRET to user mode
+			regs.rip = regs.rcx;    // Restore next RIP
+			regs.rflags = regs.r11; // Restore rflags
+			regs.rax = -4; // EINTR: interrupted system call
+			machine().set_registers(regs);
+
+			// Make forkable (with *NO* working memory)
+			machine().prepare_copy_on_write(0UL);
 		}
-		else
-		{
-			machine().fds().free_fd_callback = nullptr;
-			machine().fds().epoll_wait_callback =
-			[this](int vfd, int epfd, int timeout) {
-				auto& entry = machine().fds().get_epoll_entry_for_vfd(vfd);
-				for (const auto& it : entry.epoll_fds) {
-					if (it.first == this->m_tracked_client_vfd) {
-						// The listening socket is in the epoll set
-						this->m_poll_method = PollMethod::Epoll;
-						this->set_waiting_for_requests(true);
-						this->machine().stop();
-						return false; // Don't call epoll_wait
-					}
-				}
-				return true; // Call epoll_wait
-			};
-			machine().fds().poll_callback =
-			[this](struct pollfd* fds, unsigned nfds, int timeout) {
-				// Find the listening socket in the poll set
-				for (unsigned i = 0; i < nfds; i++) {
-					if (fds[i].fd == this->m_tracked_client_vfd) {
-						this->m_poll_method = PollMethod::Poll;
-						this->set_waiting_for_requests(true);
-						this->machine().stop();
-						return false; // Don't call poll()
-					}
-				}
-				return true; // Call poll()
-			};
-
-			this->m_waiting_for_requests = false;
-			machine().run( 1.0f );
-
-			// Make sure the program is waiting for requests
-			if (!is_waiting_for_requests()) {
-				throw std::runtime_error("Program did not wait for requests");
-			}
-		}
-
-		// The VM is currently paused in kernel mode in a system call handler
-		// so we need manully return to user mode
-		auto& regs = machine().registers();
-		// Emulate SYSRET to user mode
-		regs.rip = regs.rcx;    // Restore next RIP
-		regs.rflags = regs.r11; // Restore rflags
-		regs.rax = -4; // EINTR: interrupted system call
-		machine().set_registers(regs);
-
-		// Make forkable (with *NO* working memory)
-		machine().prepare_copy_on_write(0UL);
 
 		// Finish measuring initialization time
 		end = std::chrono::high_resolution_clock::now();
@@ -588,6 +549,23 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 	return result;
 }
 
+void VirtualMachine::restart_poll_syscall()
+{
+	switch (this->m_poll_method)
+	{
+	case PollMethod::Poll:
+		machine().system_call(machine().cpu(), SYS_poll);
+		break;
+	case PollMethod::Epoll:
+		machine().system_call(machine().cpu(), SYS_epoll_wait);
+		break;
+	case PollMethod::Undefined:
+		// This should never happen
+		fprintf(stderr, "VM %s does not have a known polling method\n", name().c_str());
+		throw std::runtime_error("VM does not have a known polling method");
+	}
+}
+
 void VirtualMachine::resume_fork()
 {
 	if (this->m_ephemeral)
@@ -597,20 +575,7 @@ void VirtualMachine::resume_fork()
 		// resume the VM.
 		while (true)
 		{
-			switch (this->m_poll_method)
-			{
-			case PollMethod::Poll:
-				machine().system_call(machine().cpu(), SYS_poll);
-				break;
-			case PollMethod::Epoll:
-				machine().system_call(machine().cpu(), SYS_epoll_wait);
-				break;
-			case PollMethod::Undefined:
-				// This should never happen
-				fprintf(stderr, "VM %s does not have a known polling method\n", name().c_str());
-				throw std::runtime_error("VM does not have a known polling method");
-			}
-
+			this->restart_poll_syscall();
 			machine().vmresume();
 
 			if (this->m_reset_needed)
