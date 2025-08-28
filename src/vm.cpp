@@ -2,6 +2,7 @@
 
 #include "settings.hpp"
 #include <cstring>
+#include <fcntl.h>
 #include <filesystem>
 #include <netinet/in.h>
 #include <numeric>
@@ -410,6 +411,24 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			}
 			return true; // Call poll()
 		};
+		machine().fds().accept_callback =
+		[this](int vfd, int fd, int flags) {
+			if (this->m_tracked_client_vfd != -1 && this->m_poll_method == PollMethod::Undefined) {
+				if (vfd == this->m_tracked_client_vfd) {
+					// Check whether the listening socket has been set non-blocking.
+					int fdflags = fcntl(fd, F_GETFL);
+					assert(fdflags != -1);
+					if (fdflags & SOCK_NONBLOCK || flags & SOCK_NONBLOCK) {
+						return true; // Call accept4
+					}
+					this->m_poll_method = PollMethod::Blocking;
+					this->set_waiting_for_requests(true);
+					this->machine().stop();
+					return false; // Don't call accept4
+				}
+			}
+			return true; // Call accept4
+		};
 		// Continue/resume or run through main()
 		if (getenv("DEBUG") != nullptr) {
 			open_debugger();
@@ -558,6 +577,9 @@ void VirtualMachine::restart_poll_syscall()
 		break;
 	case PollMethod::Epoll:
 		machine().system_call(machine().cpu(), SYS_epoll_wait);
+		break;
+	case PollMethod::Blocking:
+		machine().system_call(machine().cpu(), SYS_accept4);
 		break;
 	case PollMethod::Undefined:
 		// This should never happen

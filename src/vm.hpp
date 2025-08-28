@@ -16,6 +16,7 @@ struct VirtualMachine
 	};
 	enum PollMethod {
 		Undefined,
+		Blocking,
 		Poll,
 		Epoll,
 	};

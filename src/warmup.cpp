@@ -70,6 +70,22 @@ void VirtualMachine::warmup()
 		}
 		return true; // Call poll
 	};
+	machine().fds().accept_callback =
+	[&](int vfd, int fd, int flags) {
+		if (this->poll_method() == PollMethod::Blocking) {
+			if (freed_sockets >= NUM_WARMUP_THREADS * config().warmup_connect_requests) {
+				if (config().verbose) {
+					fprintf(stderr, "Warmed up the JIT compiler\n");
+				}
+				// If the listening socket is found, we are now waiting for
+				// requests, so we can fork a new VM.
+				this->set_waiting_for_requests(true);
+				this->machine().stop();
+				return false; // Don't call accept
+			}
+		}
+		return true; // Call accept
+	};
 
 	// Start the warmup client
 	this->begin_warmup_client();

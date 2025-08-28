@@ -48,6 +48,8 @@ int main(int argc, char* argv[], char* envp[])
 		std::string method = "epoll";
 		if (vm.poll_method() == VirtualMachine::PollMethod::Poll) {
 			method = "poll";
+		} else if (vm.poll_method() == VirtualMachine::PollMethod::Blocking) {
+			method = "blocking";
 		} else if (vm.poll_method() == VirtualMachine::PollMethod::Undefined) {
 			method = "undefined";
 		}
