@@ -9,14 +9,28 @@
 #include <linux/un.h>
 #include <thread>
 #include <unistd.h>
-#include <ranges>
 extern char **environ;
+
+static std::vector<std::string> split(const std::string &s, char seperator)
+{
+	std::vector<std::string> output;
+	std::string::size_type prev_pos = 0, pos = 0;
+
+	while ((pos = s.find(seperator, pos)) != std::string::npos)
+	{
+		std::string substring(s.substr(prev_pos, pos - prev_pos));
+		output.push_back(substring);
+		prev_pos = ++pos;
+	}
+	output.push_back(s.substr(prev_pos, pos - prev_pos)); // Last word
+	return output;
+}
 
 template <typename T>
 void add_remapping(const std::string& remap, std::vector<T>& remappings)
 {
 		tinykvm::VirtualRemapping remapping = remappings.emplace_back((tinykvm::VirtualRemapping) {});
-		auto parts = std::views::split(remap, ':');
+		auto parts = split(remap, ':');
 		auto it = parts.begin();
 		if (it == parts.end()) {
 			throw CLI::ValidationError("too few parts", remap);
@@ -356,8 +370,8 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		for (auto& path : allow_write) {
 			ensure_path(path, path, config.allowed_paths, false, true, false);
 		}
-		for (auto& triple : volume) {
-			auto parts = std::views::split(triple, ':');
+		for (const std::string& triple : volume) {
+			auto parts = split(triple, ':');
 			auto it = parts.begin();
 			if (it == parts.end()) {
 				throw CLI::ValidationError("too few parts", triple);
