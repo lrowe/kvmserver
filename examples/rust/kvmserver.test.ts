@@ -22,3 +22,19 @@ const warmup = 1;
     testHelloWorld({ ...common, program, ephemeral, warmup }),
   );
 }
+
+{
+  const program = "./target/debug/httpserversync";
+  Deno.test(
+    "httpserversync",
+    testHelloWorld({ ...common, program }),
+  );
+  Deno.test(
+    "httpserversync ephemeral",
+    testHelloWorld({ ...common, program, ephemeral }),
+  );
+  Deno.test(
+    "httpserversync ephemeral warmup",
+    testHelloWorld({ ...common, program, ephemeral, warmup }),
+  );
+}

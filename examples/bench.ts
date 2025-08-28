@@ -292,8 +292,12 @@ async function addWasmBenches(
 }
 
 const httpserver = await addBenches(
-  "Rust minimal http server",
+  "Rust minimal http server (async epoll)",
   "./rust/target/release/httpserver",
+);
+const httpserversync = await addBenches(
+  "Rust minimal http server (sync blocking)",
+  "./rust/target/release/httpserversync",
 );
 const helloworld = await addBenches(
   "Deno helloworld",
@@ -314,6 +318,8 @@ const md = `\
 ![](./bench.svg)
 
 ${httpserver}
+
+${httpserversync}
 
 ${helloworld}
 
