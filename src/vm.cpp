@@ -41,6 +41,7 @@ static bool lookup_allowed_path(
 	// Find first key strictly greater than path, e.g.
 	// { /foo: true, /foo/bar: true, /qux: true }.upper_bound(/foo/baz) -> /qux
 	auto it = allowed_paths.upper_bound(path);
+	size_t failsafe = allowed_paths.size();
 	while (it != allowed_paths.begin()) {
 		--it; // Previous key is either the path or shares a common prefix, e.g. /foo/bar.
 		auto [first_it, path_it] = std::mismatch(it->first.begin(), it->first.end(), path.begin(), path.end());
@@ -54,6 +55,10 @@ static bool lookup_allowed_path(
 		}
 		// otherwise lookup the common prefix
 		it = allowed_paths.upper_bound(std::accumulate(path.begin(), path_it, std::filesystem::path("/"), std::divides{}));
+		if (--failsafe == 0) {
+			fprintf(stderr, "lookup_allowed_path: failsafe triggered for path %s\n", pathinout.c_str());
+			break;
+		}
 	}
 	return false; // no prefix found
 }
@@ -530,7 +535,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 	}
 	catch (const tinykvm::MemoryException& me)
 	{
-		if (config().verbose) {
+		if (config().verbose_pagetable) {
 			machine().print_pagetables();
 		}
 		fprintf(stderr,
