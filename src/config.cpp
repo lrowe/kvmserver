@@ -29,7 +29,7 @@ static std::vector<std::string> split(const std::string &s, char seperator)
 template <typename T>
 void add_remapping(const std::string& remap, std::vector<T>& remappings)
 {
-		tinykvm::VirtualRemapping remapping = remappings.emplace_back((tinykvm::VirtualRemapping) {});
+		tinykvm::VirtualRemapping& remapping = remappings.emplace_back((tinykvm::VirtualRemapping) {});
 		auto parts = split(remap, ':');
 		auto it = parts.begin();
 		if (it == parts.end()) {
