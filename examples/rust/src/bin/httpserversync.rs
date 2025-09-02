@@ -15,21 +15,21 @@ fn main() -> Result<(), Error> {
         let listener = UnixListener::bind(&addr)?;
         eprintln!("Listening on: {addr}");
         loop {
-            let (mut stream, _) = listener.accept().expect("accept error");
+            let (mut stream, _) = listener.accept()?;
             if let Err(e) = process(&mut stream) {
                 eprintln!("failed to process connection; error = {e}");
             }
-            stream.shutdown(Shutdown::Both)?;
+            stream.shutdown(Shutdown::Write).unwrap_or_default();
         }
     } else {
         let listener = TcpListener::bind(&addr)?;
         eprintln!("Listening on: {addr}");
         loop {
-            let (mut stream, _) = listener.accept().expect("accept error");
+            let (mut stream, _) = listener.accept()?;
             if let Err(e) = process(&mut stream) {
                 eprintln!("failed to process connection; error = {e}");
             }
-            stream.shutdown(Shutdown::Both)?;
+            stream.shutdown(Shutdown::Write).unwrap_or_default();
         }
     }
 }
@@ -57,7 +57,11 @@ fn process<Stream: Read + Write>(stream: &mut Stream) -> Result<(), Error> {
         loop {
             let bytes_read = stream.read(&mut buf[offset..])?;
             if bytes_read == 0 {
-                return Err(Error::from(ErrorKind::UnexpectedEof));
+                return if offset == 0 {
+                    Ok(())
+                } else {
+                    Err(Error::from(ErrorKind::UnexpectedEof))
+                };
             }
             offset += bytes_read;
             let mut headers = [httparse::EMPTY_HEADER; 16];
@@ -66,6 +70,7 @@ fn process<Stream: Read + Write>(stream: &mut Stream) -> Result<(), Error> {
                 Ok(httparse::Status::Complete(bytes_consumed)) => {
                     let version = req.version.unwrap();
                     let mut close = version == 0;
+                    let mut has_body = false;
                     if req.method != Some("GET") {
                         stream.write_all(
                             b"HTTP/1.1 405 Method Not Allowed\r\n\
@@ -78,12 +83,26 @@ fn process<Stream: Read + Write>(stream: &mut Stream) -> Result<(), Error> {
                     }
                     for header in &*req.headers {
                         if header.name.eq_ignore_ascii_case("connection") {
-                            close = !header.value.eq_ignore_ascii_case("keep-alive".as_bytes());
+                            close = !header.value.eq_ignore_ascii_case(b"keep-alive");
+                        } else if header.name.eq_ignore_ascii_case("content-length") {
+                            has_body = has_body || header.value != b"0";
+                        } else if header.name.eq_ignore_ascii_case("transfer-encoding") {
+                            has_body = has_body || header.value.eq_ignore_ascii_case(b"chunked");
                         }
                     }
+                    if has_body {
+                        stream.write_all(
+                            b"HTTP/1.1 400 Bad Request\r\n\
+                            Connection: close\r\n\
+                            Content-Type: text/plain; charset=utf-8\r\n\
+                            \r\n\
+                            Bad Request",
+                        )?;
+                        return Err(Error::from(ErrorKind::InvalidData));
+                    }
                     let body = "Hello, World!";
-                    let conn = if close { "close" } else { "keep_alive" };
-                    let length = body.as_bytes().len();
+                    let conn = if close { "close" } else { "keep-alive" };
+                    let length = body.len();
                     stream.write_all(
                         format!(
                             "HTTP/1.1 200 OK\r\n\

@@ -17,29 +17,31 @@ async fn main() -> Result<(), Error> {
         let listener = UnixListener::bind(&addr)?;
         eprintln!("Listening on: {addr}");
         loop {
-            let (stream, _) = listener.accept().await?;
+            let (mut stream, _) = listener.accept().await?;
             tokio::spawn(async move {
-                if let Err(e) = process(stream).await {
+                if let Err(e) = process(&mut stream).await {
                     eprintln!("failed to process connection; error = {e}");
                 }
+                stream.shutdown().await.unwrap_or_default();
             });
         }
     } else {
         let listener = TcpListener::bind(&addr).await?;
         eprintln!("Listening on: {addr}");
         loop {
-            let (stream, _) = listener.accept().await?;
+            let (mut stream, _) = listener.accept().await?;
             tokio::spawn(async move {
-                if let Err(e) = process(stream).await {
+                if let Err(e) = process(&mut stream).await {
                     eprintln!("failed to process connection; error = {e}");
                 }
+                stream.shutdown().await.unwrap_or_default();
             });
         }
     }
 }
 
 // // If full http parsing is not requrired this will suffice:
-// async fn process<Stream: AsyncRead + AsyncWrite + Unpin>(mut stream: Stream) -> Result<(), Error> {
+// async fn process<Stream: AsyncRead + AsyncWrite + Unpin>(stream: &mut Stream) -> Result<(), Error> {
 //     let mut req = [0; 4096];
 //     let _bytes_read = stream.read(&mut req).await?;
 //     if !req.starts_with(b"GET ") {
@@ -54,18 +56,21 @@ async fn main() -> Result<(), Error> {
 //         Hello, World!",
 //         )
 //         .await?;
-//     stream.shutdown().await?;
 //     Ok(())
 // }
 
-async fn process<Stream: AsyncRead + AsyncWrite + Unpin>(mut stream: Stream) -> Result<(), Error> {
+async fn process<Stream: AsyncRead + AsyncWrite + Unpin>(stream: &mut Stream) -> Result<(), Error> {
     let mut offset = 0;
     let mut buf = [0; 4096];
     loop {
         loop {
             let bytes_read = stream.read(&mut buf[offset..]).await?;
             if bytes_read == 0 {
-                return Err(Error::from(ErrorKind::UnexpectedEof));
+                return if offset == 0 {
+                    Ok(())
+                } else {
+                    Err(Error::from(ErrorKind::UnexpectedEof))
+                };
             }
             offset += bytes_read;
             let mut headers = [httparse::EMPTY_HEADER; 16];
@@ -74,6 +79,7 @@ async fn process<Stream: AsyncRead + AsyncWrite + Unpin>(mut stream: Stream) -> 
                 Ok(httparse::Status::Complete(bytes_consumed)) => {
                     let version = req.version.unwrap();
                     let mut close = version == 0;
+                    let mut has_body = false;
                     if req.method != Some("GET") {
                         stream
                             .write_all(
@@ -88,12 +94,28 @@ async fn process<Stream: AsyncRead + AsyncWrite + Unpin>(mut stream: Stream) -> 
                     }
                     for header in &*req.headers {
                         if header.name.eq_ignore_ascii_case("connection") {
-                            close = !header.value.eq_ignore_ascii_case("keep-alive".as_bytes());
+                            close = !header.value.eq_ignore_ascii_case(b"keep-alive");
+                        } else if header.name.eq_ignore_ascii_case("content-length") {
+                            has_body = has_body || header.value != b"0";
+                        } else if header.name.eq_ignore_ascii_case("transfer-encoding") {
+                            has_body = has_body || header.value.eq_ignore_ascii_case(b"chunked");
                         }
                     }
+                    if has_body {
+                        stream
+                            .write_all(
+                                b"HTTP/1.1 400 Bad Request\r\n\
+                            Connection: close\r\n\
+                            Content-Type: text/plain; charset=utf-8\r\n\
+                            \r\n\
+                            Bad Request",
+                            )
+                            .await?;
+                        return Err(Error::from(ErrorKind::InvalidData));
+                    }
                     let body = "Hello, World!";
-                    let conn = if close { "close" } else { "keep_alive" };
-                    let length = body.as_bytes().len();
+                    let conn = if close { "close" } else { "keep-alive" };
+                    let length = body.len();
                     stream
                         .write_all(
                             format!(
