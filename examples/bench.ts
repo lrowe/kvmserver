@@ -210,6 +210,13 @@ async function addBenches(title: string, program: string) {
   );
 
   await group.bench(
+    "kvmserver threads=1 (reusing connection)",
+    kvmServerCommand({ program, args, cwd, allowAll, warmup }),
+    waitProgram,
+    [`--unix-socket=${path}`, "-c=1", `-z=${duration}`],
+  );
+
+  await group.bench(
     "kvmserver threads=1",
     kvmServerCommand({ program, args, cwd, allowAll, warmup }),
     waitProgram,
