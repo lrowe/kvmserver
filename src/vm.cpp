@@ -423,7 +423,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 					// Check whether the listening socket has been set non-blocking.
 					int fdflags = fcntl(fd, F_GETFL);
 					assert(fdflags != -1);
-					if (fdflags & SOCK_NONBLOCK || flags & SOCK_NONBLOCK) {
+					if (fdflags & SOCK_NONBLOCK) {
 						return true; // Call accept4
 					}
 					this->m_poll_method = PollMethod::Blocking;
