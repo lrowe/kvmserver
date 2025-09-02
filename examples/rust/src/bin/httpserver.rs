@@ -8,36 +8,43 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::UnixListener;
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Error> {
-    let addr = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:8000".to_string());
-    if addr.contains("/") {
-        let listener = UnixListener::bind(&addr)?;
-        eprintln!("Listening on: {addr}");
-        loop {
-            let (mut stream, _) = listener.accept().await?;
-            tokio::spawn(async move {
-                if let Err(e) = process(&mut stream).await {
-                    eprintln!("failed to process connection; error = {e}");
-                }
-                stream.shutdown().await.unwrap_or_default();
-            });
+fn main() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    // Spawn future to avoid extra single byte write syscall per loop.
+    let future = rt.spawn(async {
+        let addr = std::env::args()
+            .nth(1)
+            .unwrap_or_else(|| "127.0.0.1:8000".to_string());
+        if addr.contains("/") {
+            let listener = UnixListener::bind(&addr).unwrap();
+            eprintln!("Listening on: {addr}");
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                tokio::spawn(async move {
+                    if let Err(e) = process(&mut stream).await {
+                        eprintln!("failed to process connection; error = {e}");
+                    }
+                    stream.shutdown().await.unwrap_or_default();
+                });
+            }
+        } else {
+            let listener = TcpListener::bind(&addr).await.unwrap();
+            eprintln!("Listening on: {addr}");
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                tokio::spawn(async move {
+                    if let Err(e) = process(&mut stream).await {
+                        eprintln!("failed to process connection; error = {e}");
+                    }
+                    stream.shutdown().await.unwrap_or_default();
+                });
+            }
         }
-    } else {
-        let listener = TcpListener::bind(&addr).await?;
-        eprintln!("Listening on: {addr}");
-        loop {
-            let (mut stream, _) = listener.accept().await?;
-            tokio::spawn(async move {
-                if let Err(e) = process(&mut stream).await {
-                    eprintln!("failed to process connection; error = {e}");
-                }
-                stream.shutdown().await.unwrap_or_default();
-            });
-        }
-    }
+    });
+    rt.block_on(future).unwrap();
 }
 
 // // If full http parsing is not requrired this will suffice:
