@@ -1,0 +1,8 @@
+{
+  "name": "node-isolated-vm-example",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "isolated-vm": "^6.0.1"
+  }
+}
