@@ -90,8 +90,10 @@ static bool validate_network_access(
 		// No match found
 		return false;
 	}
-	// IPv6
-	if (addr.ss_family == AF_INET6)
+	// IPv6 or unspecified (we are guessing IPv4-mapped IPv6)
+	// XXX: is AF_UNSPEC a liability here? we should probably not allow
+	//      it but some (e.g. bun uses it to mean IPv4-mapped IPv6)
+	if (addr.ss_family == AF_INET6 || addr.ss_family == AF_UNSPEC)
 	{
 		const struct sockaddr_in6* addr_ipv6 =
 			reinterpret_cast<const struct sockaddr_in6*>(&addr);
