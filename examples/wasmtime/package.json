@@ -3,6 +3,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "@bytecodealliance/componentize-js": "^0.18.4"
+    "@bytecodealliance/jco": "^1.14.0",
+    "@bytecodealliance/componentize-js": "^0.19.0"
   }
 }

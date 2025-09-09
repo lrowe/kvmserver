@@ -280,6 +280,7 @@ async function addBenches(title: string, program: string) {
 
 async function addWasmBenches(
   title: string,
+  wasmtime: string,
   program_name: Record<string, string>,
 ) {
   const group = new BenchGroup(title);
@@ -287,7 +288,7 @@ async function addWasmBenches(
     const args = ["serve", "--addr=127.0.0.1:8000", "-S", "common", program];
     await group.bench(
       name,
-      new Deno.Command("wasmtime", { args, cwd, stderr: "piped" }),
+      new Deno.Command(wasmtime, { args, cwd, stderr: "piped" }),
       waitServingHTTP,
       ["-c=1", `-z=${duration}`],
       async () => {
@@ -314,12 +315,34 @@ const renderer = await addBenches(
   "Deno React page rendering",
   "./deno/target/renderer",
 );
-const wasmtime = await addWasmBenches("Wasmtime serve", {
-  "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm": "helloworld.rs",
+const wasmtime = await addWasmBenches("Wasmtime serve (release)", "wasmtime", {
+  "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm":
+    "helloworld.rs",
   "./wasmtime/target/helloworld.wasm": "helloworld.js",
-  "./wasmtime/target/helloworldaot.wasm": "helloworld.js aot",
   "./wasmtime/target/renderer.wasm": "React page rendering",
 });
+
+const wasmtime_reuse = await addWasmBenches(
+  "Wasmtime serve (experimental instance reuse on)",
+  "wasmtime-reuse",
+  {
+    "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm":
+      "helloworld.rs",
+    "./wasmtime/target/helloworld-incoming.wasm": "helloworld.js",
+    "./wasmtime/target/renderer-incoming.wasm": "React page rendering",
+  },
+);
+
+const wasmtime_noreuse = await addWasmBenches(
+  "Wasmtime serve (experimental instance reuse off)",
+  "wasmtime-noreuse",
+  {
+    "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm":
+      "helloworld.rs",
+    "./wasmtime/target/helloworld-incoming.wasm": "helloworld.js",
+    "./wasmtime/target/renderer-incoming.wasm": "React page rendering",
+  },
+);
 
 const md = `\
 ![](./bench.svg)
@@ -333,6 +356,10 @@ ${helloworld}
 ${renderer}
 
 ${wasmtime}
+
+${wasmtime_reuse}
+
+${wasmtime_noreuse}
 `;
 console.log(md);
 

@@ -1,0 +1,6 @@
+{
+  "exclude": ["ext/", "target/"],
+  "imports": {
+    "wasi:http/types@0.2.3": "./node_modules/@bytecodealliance/preview2-shim/types/index.d.ts"
+  }
+}
