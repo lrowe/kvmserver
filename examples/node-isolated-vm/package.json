@@ -1,8 +1,11 @@
 {
   "name": "node-isolated-vm-example",
-  "main": "index.js",
+  "type": "module",
   "private": true,
   "dependencies": {
     "isolated-vm": "^6.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1"
   }
 }

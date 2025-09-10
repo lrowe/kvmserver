@@ -2,7 +2,7 @@ import * as echarts from "echarts";
 import { assertEquals } from "@std/assert";
 import { kvmServerCommand, waitForLine } from "./testutil.ts";
 
-const path = "./deno.sock";
+const path = "./bench.sock";
 const args = [path];
 const cwd = import.meta.dirname;
 const ephemeral = true;
@@ -262,12 +262,28 @@ async function addBenches(title: string, program: string) {
 
 async function addWasmBenches(
   title: string,
-  wasmtime: string,
-  program_name: Record<string, string>,
+  program: string,
+  programFetchEvent?: string,
 ) {
   const group = new BenchGroup(title);
-  for (const [program, name] of Object.entries(program_name)) {
-    const args = ["serve", "--addr=127.0.0.1:8000", "-S", "common", program];
+  for (
+    const [wasmtime, name] of Object.entries({
+      "wasmtime-reuse": "Wasmtime serve (experimental instance reuse on)",
+      "wasmtime-noreuse": "Wasmtime serve (experimental instance reuse off)",
+      "wasmtime": 
+        programFetchEvent ? "Wasmtime serve (release with fetch-event)" : "Wasmtime serve (release)"
+      ,
+    })
+  ) {
+    const args = [
+      "serve",
+      "--addr=127.0.0.1:8000",
+      "-S",
+      "common",
+      wasmtime === "wasmtime" && programFetchEvent
+        ? programFetchEvent
+        : program,
+    ];
     await group.bench(
       name,
       new Deno.Command(wasmtime, { args, cwd, stderr: "piped" }),
@@ -325,6 +341,29 @@ async function addBunForkBenches(title: string, program: string) {
   return group;
 }
 
+async function addIsolateBenches(title: string, program: string) {
+  const group = new BenchGroup(title);
+  for (
+    const [server, name] of Object.entries({
+      "node-isolated-vm/main.ts": "Main runtime",
+      "node-isolated-vm/reused.ts": "Isolate reused",
+      "node-isolated-vm/isolated.ts": "Isolate per request",
+    })
+  ) {
+    const args = [server, program, "8000"];
+    await group.bench(
+      name,
+      new Deno.Command("node", { args, cwd, stdout: "piped" }),
+      waitForLineStartsWith("Listening", "stdout"),
+      ["-c=1", `-z=${duration}`],
+      async () => {
+        await oha("-c=1", "-n=100");
+      },
+    );
+  }
+  return group;
+}
+
 const httpserver = await addBenches(
   "Rust minimal http server (async epoll)",
   "./rust/target/release/httpserver",
@@ -341,33 +380,21 @@ const renderer = await addBenches(
   "Deno React page rendering",
   "./deno/target/renderer",
 );
-const wasmtime = await addWasmBenches("Wasmtime serve (release)", "wasmtime", {
-  "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm":
-    "helloworld.rs",
-  "./wasmtime/target/helloworld.wasm": "helloworld.js",
-  "./wasmtime/target/renderer.wasm": "React page rendering",
-});
-
-const wasmtime_reuse = await addWasmBenches(
-  "Wasmtime serve (experimental instance reuse on)",
-  "wasmtime-reuse",
-  {
-    "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm":
-      "helloworld.rs",
-    "./wasmtime/target/helloworld-incoming.wasm": "helloworld.js",
-    "./wasmtime/target/renderer-incoming.wasm": "React page rendering",
-  },
+const wasmtime_rust = await addWasmBenches(
+  "Wasmtime helloworld.rs",
+  "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm",
 );
 
-const wasmtime_noreuse = await addWasmBenches(
-  "Wasmtime serve (experimental instance reuse off)",
-  "wasmtime-noreuse",
-  {
-    "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm":
-      "helloworld.rs",
-    "./wasmtime/target/helloworld-incoming.wasm": "helloworld.js",
-    "./wasmtime/target/renderer-incoming.wasm": "React page rendering",
-  },
+const wasmtime_helloworld = await addWasmBenches(
+  "Wasmtime helloworld.js",
+  "./wasmtime/target/helloworld-incoming.wasm",
+  "./wasmtime/target/helloworld.wasm",
+);
+
+const wasmtime_renderer = await addWasmBenches(
+  "Wasmtime React page rendering",
+  "./wasmtime/target/renderer-incoming.wasm",
+  "./wasmtime/target/renderer.wasm",
 );
 
 const bun_fork_helloworld = await addBunForkBenches(
@@ -379,27 +406,30 @@ const bun_fork_renderer = await addBunForkBenches(
   "./bun/target/renderer.mjs",
 );
 
-const md = `\
-![](./bench.svg)
+const isolate_helloworld = await addIsolateBenches(
+  "Node isolated-vm helloworld",
+  "node-isolated-vm/helloworld.cjs",
+);
 
-${httpserver}
+const isolate_renderer = await addIsolateBenches(
+  "Node isolated-vm React server rendering",
+  "node-isolated-vm/target/renderer.js",
+);
 
-${httpserversync}
-
-${helloworld}
-
-${renderer}
-
-${wasmtime}
-
-${wasmtime_reuse}
-
-${wasmtime_noreuse}
-
-${bun_fork_helloworld}
-
-${bun_fork_renderer}
-`;
+const md = [
+  "![](./bench.svg)",
+  httpserver,
+  httpserversync,
+  helloworld,
+  renderer,
+  wasmtime_rust,
+  wasmtime_helloworld,
+  wasmtime_renderer,
+  bun_fork_helloworld,
+  bun_fork_renderer,
+  isolate_helloworld,
+  isolate_renderer,
+].map(String).join("\n\n");
 console.log(md);
 
 delete renderer.cols["average"];
