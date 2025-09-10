@@ -41,6 +41,7 @@ RUN curl -fsSL https://github.com/bytecodealliance/wasmtime/releases/download/v3
 COPY --from=build_wasmtime /bin/wasmtime-reuse /bin/wasmtime-noreuse /usr/local/bin/
 ADD --chmod=755 https://github.com/hatoo/oha/releases/download/v1.9.0/oha-linux-amd64-pgo /usr/local/bin/oha
 COPY --from=denoland/deno:bin-2.4.5 /deno /usr/local/bin/
+COPY --from=oven/bun:1.2.21-debian /usr/local/bin/bun /usr/local/bin/
 # Must run as non-root user to avoid Deno.Command setgroups(0, NULL) https://github.com/denoland/deno/issues/29770
 RUN useradd --system --home /examples --user-group runner
 USER runner

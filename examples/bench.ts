@@ -68,32 +68,14 @@ async function oha(
   return JSON.parse(new TextDecoder("utf-8").decode(output.stdout));
 }
 
-function waitListening(proc: Deno.ChildProcess) {
-  return Promise.race([
-    waitForLine(proc.stderr, (line) => line.startsWith("Listening")),
-    proc.status.then(({ code }) => {
-      throw new Error(`Status code: ${code}`);
-    }),
-  ]);
-}
-
-function waitServingHTTP(proc: Deno.ChildProcess) {
-  return Promise.race([
-    waitForLine(proc.stderr, (line) => line.startsWith("Serving HTTP")),
-    proc.status.then(({ code }) => {
-      throw new Error(`Status code: ${code}`);
-    }),
-  ]);
-}
-
-function waitProgram(proc: Deno.ChildProcess) {
-  return Promise.race([
-    waitForLine(proc.stdout, (line) => line.startsWith("Program")),
-    proc.status.then(({ code }) => {
-      throw new Error(`Status code: ${code}`);
-    }),
-  ]);
-}
+const waitForLineStartsWith =
+  (s: string, io: "stdout" | "stderr") => (proc: Deno.ChildProcess) =>
+    Promise.race([
+      waitForLine(proc[io], (line) => line.startsWith(s)),
+      proc.status.then(({ code }) => {
+        throw new Error(`Status code: ${code}`);
+      }),
+    ]);
 
 type NamedOhaResults = { name: string } & OhaResults;
 
@@ -192,7 +174,7 @@ async function addBenches(title: string, program: string) {
   await group.bench(
     "native (reusing connection)",
     new Deno.Command(program, { args, cwd, stderr: "piped" }),
-    waitListening,
+    waitForLineStartsWith("Listening", "stderr"),
     [`--unix-socket=${path}`, "-c=1", `-z=${duration}`],
     async () => {
       await oha(`--unix-socket=${path}`, "-c=1", `-n=${warmup}`);
@@ -202,7 +184,7 @@ async function addBenches(title: string, program: string) {
   await group.bench(
     "native",
     new Deno.Command(program, { args, cwd, stderr: "piped" }),
-    waitListening,
+    waitForLineStartsWith("Listening", "stderr"),
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=1", `-z=${duration}`],
     async () => {
       await oha(`--unix-socket=${path}`, "-c=1", `-n=${warmup}`);
@@ -212,21 +194,21 @@ async function addBenches(title: string, program: string) {
   await group.bench(
     "kvmserver threads=1 (reusing connection)",
     kvmServerCommand({ program, args, cwd, allowAll, warmup }),
-    waitProgram,
+    waitForLineStartsWith("Program", "stdout"),
     [`--unix-socket=${path}`, "-c=1", `-z=${duration}`],
   );
 
   await group.bench(
     "kvmserver threads=1",
     kvmServerCommand({ program, args, cwd, allowAll, warmup }),
-    waitProgram,
+    waitForLineStartsWith("Program", "stdout"),
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=1", `-z=${duration}`],
   );
 
   await group.bench(
     "kvmserver ephemeral threads=1",
     kvmServerCommand({ program, args, cwd, allowAll, warmup, ephemeral }),
-    waitProgram,
+    waitForLineStartsWith("Program", "stdout"),
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=1", `-z=${duration}`],
   );
 
@@ -241,7 +223,7 @@ async function addBenches(title: string, program: string) {
       ephemeral,
       threads: 2,
     }),
-    waitProgram,
+    waitForLineStartsWith("Program", "stdout"),
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=2", `-z=${duration}`],
   );
 
@@ -256,7 +238,7 @@ async function addBenches(title: string, program: string) {
       ephemeral,
       threads: 4,
     }),
-    waitProgram,
+    waitForLineStartsWith("Program", "stdout"),
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=4", `-z=${duration}`],
   );
 
@@ -271,7 +253,7 @@ async function addBenches(title: string, program: string) {
       ephemeral,
       threads: 2,
     }),
-    waitProgram,
+    waitForLineStartsWith("Program", "stdout"),
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=1", `-z=${duration}`],
   );
 
@@ -289,13 +271,57 @@ async function addWasmBenches(
     await group.bench(
       name,
       new Deno.Command(wasmtime, { args, cwd, stderr: "piped" }),
-      waitServingHTTP,
+      waitForLineStartsWith("Serving HTTP", "stderr"),
       ["-c=1", `-z=${duration}`],
       async () => {
         await oha("-c=1", "-n=100");
       },
     );
   }
+  return group;
+}
+
+async function addBunForkBenches(title: string, program: string) {
+  const env = {
+    BUN_GC_TIMER_DISABLE: "true",
+    BUN_JSC_useConcurrentGC: "false",
+    BUN_JSC_useConcurrentJIT: "false",
+    BUN_PORT: "8000",
+  };
+  const group = new BenchGroup(title);
+  await group.bench(
+    "Bun.serve (reusing connection)",
+    new Deno.Command("bun", {
+      args: [program, path],
+      cwd,
+      env,
+      stdout: "piped",
+    }),
+    waitForLineStartsWith("Started", "stdout"),
+    [`--unix-socket=${path}`, "-c=1", `-z=${duration}`],
+    async () => {
+      await oha(`--unix-socket=${path}`, "-c=1", "-n=100");
+    },
+  );
+  await group.bench(
+    "process forking",
+    new Deno.Command("bun", {
+      args: ["bun/fork.ts", program, path],
+      cwd,
+      env,
+      stdout: "piped",
+    }),
+    waitForLineStartsWith("Started", "stdout"),
+    [`--unix-socket=${path}`, "--disable-keepalive", "-c=1", `-z=${duration}`],
+    async () => {
+      await oha(
+        `--unix-socket=${path}`,
+        "--disable-keepalive",
+        "-c=1",
+        "-n=100",
+      );
+    },
+  );
   return group;
 }
 
@@ -344,6 +370,15 @@ const wasmtime_noreuse = await addWasmBenches(
   },
 );
 
+const bun_fork_helloworld = await addBunForkBenches(
+  "Bun process forking helloworld",
+  "./bun/helloworld.js",
+);
+const bun_fork_renderer = await addBunForkBenches(
+  "Bun process forking React page rendering",
+  "./bun/target/renderer.mjs",
+);
+
 const md = `\
 ![](./bench.svg)
 
@@ -360,6 +395,10 @@ ${wasmtime}
 ${wasmtime_reuse}
 
 ${wasmtime_noreuse}
+
+${bun_fork_helloworld}
+
+${bun_fork_renderer}
 `;
 console.log(md);
 
