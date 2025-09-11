@@ -145,7 +145,9 @@ async function handleConnection(handler: Handler, fd: number) {
   try {
     await handleRequest(handler, conn);
   } catch (err) {
-    console.error(err);
+    if ((err as Error & { code?: string })?.code !== "EPIPE") {
+      console.error(err);
+    }
   }
   if (libc.symbols.shutdown(conn, SHUT_WR) < 0) {
     console.error("shutdown failed");
@@ -192,7 +194,31 @@ async function main(
   try {
     listen(fd);
     console.log(`Started process forking server: ${addr}`);
-    await runForked(handler, fd);
+    // Processes forked from the original process risk deadlocking if an
+    // ancillary threads happens to hold a lock during that instant. Forking
+    // an intermediate process ensures that if the intermediate process works
+    // its forked child process will work too.
+    const ppid_before_fork = libc.symbols.getpid();
+    const pid = libc.symbols.fork();
+    if (pid === 0) {
+      // Fork server
+      if (libc.symbols.prctl(PR_SET_PDEATHSIG, SIGTERM) === -1) {
+        console.error("prctl failed");
+        process.exit(1);
+      }
+      if (libc.symbols.getppid() != ppid_before_fork) {
+        process.exit(0);
+      }
+      await runForked(handler, fd);
+      process.exit(0);
+    } else if (pid > 0) {
+      // Parent
+      if (libc.symbols.waitpid(pid, null, 0) == -1) {
+        throw new Error("waitpid() failed");
+      }
+    } else {
+      throw new Error("fork() failed.");
+    }
   } catch (err) {
     console.error(err);
     process.exit(1);
