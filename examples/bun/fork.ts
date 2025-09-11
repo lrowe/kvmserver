@@ -108,7 +108,7 @@ function listen(fd: number) {
   }
 }
 
-async function handleConnection(handler: Handler, conn: number) {
+async function handleRequest(handler: Handler, conn: number) {
   // Unfortunately Bun.serve does not support serving on fds.
   // This also applies to Bun's implementation of node:http and node:net.
   const buf = new Uint8Array(1024);
@@ -134,6 +134,19 @@ async function handleConnection(handler: Handler, conn: number) {
     fs.writeFileSync(conn, new TextEncoder().encode(head));
     fs.writeFileSync(conn, bytes);
   }
+}
+
+async function handleConnection(handler: Handler, fd: number) {
+  const conn = libc.symbols.accept(fd, null, null);
+  if (conn < 0) {
+    console.error("accept failed");
+    process.exit(1);
+  }
+  try {
+    await handleRequest(handler, conn);
+  } catch (err) {
+    console.error(err);
+  }
   if (libc.symbols.shutdown(conn, SHUT_WR) < 0) {
     console.error("shutdown failed");
   }
@@ -145,6 +158,7 @@ async function runForked(handler: Handler, fd: number) {
   while (true) {
     const pid = libc.symbols.fork();
     if (pid === 0) {
+      // Child
       if (libc.symbols.prctl(PR_SET_PDEATHSIG, SIGTERM) === -1) {
         console.error("prctl failed");
         process.exit(1);
@@ -152,17 +166,7 @@ async function runForked(handler: Handler, fd: number) {
       if (libc.symbols.getppid() != ppid_before_fork) {
         process.exit(0);
       }
-      // Child
-      const conn = libc.symbols.accept(fd, null, null);
-      if (conn < 0) {
-        console.error("accept failed");
-        process.exit(1);
-      }
-      try {
-        await handleConnection(handler, conn);
-      } catch (err) {
-        console.error(err);
-      }
+      await handleConnection(handler, fd);
       process.exit(0);
     } else if (pid > 0) {
       // Parent
