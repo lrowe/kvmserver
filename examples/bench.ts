@@ -448,6 +448,18 @@ function bunForkBenches(title: string, program: string) {
     warmup({}, 100, path),
   );
   group.bench(
+    "main thread",
+    new Deno.Command("bun", {
+      args: ["bun/main.ts", program, path],
+      cwd,
+      env,
+      stdout: "piped",
+    }),
+    waitForLineStartsWith("Started", "stdout"),
+    [`--unix-socket=${path}`, "--disable-keepalive", "-c=1", `-z=${duration}`],
+    warmup({ headers: { connection: "close" } }, 100, path),
+  );
+  group.bench(
     "process forking",
     new Deno.Command("bun", {
       args: ["bun/fork.ts", program, path],

@@ -6,7 +6,7 @@ import { gc, resolveSync, type ServeOptions, type UnixServeOptions } from "bun";
 import process from "node:process";
 import fs from "node:fs";
 
-type Handler = (request: Request) => Response | Promise<Response>;
+export type Handler = (request: Request) => Response | Promise<Response>;
 
 const AF_UNIX = 1;
 const AF_INET = 2;
@@ -70,7 +70,7 @@ const libc = dlopen(libcPath, {
   },
 });
 
-function bind(
+export function bind(
   { port, unix }: ServeOptions | UnixServeOptions,
 ): [fd: number, addr: string] {
   let sockaddr;
@@ -102,13 +102,13 @@ function bind(
   return [fd, addr];
 }
 
-function listen(fd: number) {
+export function listen(fd: number) {
   if (libc.symbols.listen(fd, 512) < 0) {
     throw new Error("listen failed");
   }
 }
 
-async function handleRequest(handler: Handler, conn: number) {
+export async function handleRequest(handler: Handler, conn: number) {
   // Unfortunately Bun.serve does not support serving on fds.
   // This also applies to Bun's implementation of node:http and node:net.
   const buf = new Uint8Array(1024);
@@ -136,7 +136,7 @@ async function handleRequest(handler: Handler, conn: number) {
   }
 }
 
-async function handleConnection(handler: Handler, fd: number) {
+export async function handleConnection(handler: Handler, fd: number) {
   const conn = libc.symbols.accept(fd, null, null);
   if (conn < 0) {
     console.error("accept failed");
