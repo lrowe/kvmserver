@@ -18,15 +18,10 @@ target/renderer:
 target/deno_city.jpeg:
 	mkdir -p target
 	curl -L -o target/deno_city.jpeg https://artwork.deno.dev/images/artwork/deno_city.jpeg
-target/magick.wasm.bin:
-	mkdir -p target
-	curl -L -o target/magick.wasm.bin "https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.35/dist/magick.wasm"
-target/imagemagick: target/deno_city.jpeg target/magick.wasm.bin
+target/imagemagick: target/deno_city.jpeg
 	mkdir -p target
 	deno compile \
 		--allow-all \
-		--include target/magick.wasm.bin \
-		--include target/deno_city.jpeg \
 		--v8-flags=--predictable \
 		-o target/imagemagick \
 		imagemagick.ts

@@ -8,7 +8,7 @@ eval?.(fs.readFileSync(filename, "utf-8"));
 declare function handler_body(): string;
 
 http.createServer((_req, res) => {
-  const result = handler_body()
+  const result = handler_body();
   res.end(result);
 }).listen(Number(port));
 console.log(`Listening on ${port}`);

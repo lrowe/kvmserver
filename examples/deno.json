@@ -1,11 +1,14 @@
 {
-  "exclude": ["**/target/"],
+  "exclude": ["node-isolated-vm/", "wasmtime/", "**/target/"],
+
   "imports": {
+    "@imagemagick/magick-wasm": "npm:@imagemagick/magick-wasm@^0.0.36",
     "@std/assert": "jsr:@std/assert@1",
     "@std/cli/parse-args": "jsr:@std/cli/parse-args",
     "@std/streams": "jsr:@std/streams@1",
     "bun": "npm:bun-types/bun.d.ts",
     "bun:ffi": "npm:bun-types/ffi.d.ts",
     "echarts": "npm:echarts@^5.6.0"
-  }
+  },
+  "unstable": ["raw-imports"]
 }

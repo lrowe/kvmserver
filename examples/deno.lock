@@ -6,6 +6,7 @@
     "jsr:@std/cli@*": "1.0.22",
     "jsr:@std/internal@^1.0.6": "1.0.7",
     "jsr:@std/streams@1": "1.0.9",
+    "npm:@imagemagick/magick-wasm@^0.0.36": "0.0.36",
     "npm:@types/node@*": "22.15.15",
     "npm:bun-types@*": "1.2.21_@types+react@19.1.12",
     "npm:echarts@*": "5.6.0",
@@ -35,6 +36,9 @@
     }
   },
   "npm": {
+    "@imagemagick/magick-wasm@0.0.36": {
+      "integrity": "sha512-qSe4DVkpaU9VKGpOjClUZPjlIOrzoJtP22qAb11Gsw+ZvGX5dLmBBE5pRpLxRTEgpp9lRXW29nas2oppjcVLPQ=="
+    },
     "@types/node@22.15.15": {
       "integrity": "sha512-R5muMcZob3/Jjchn5LcO8jdKwSCbzqmPB6ruBxMcf9kbxtniZHP327s6C37iOfuw8mbKK3cAQa7sEl7afLrQ8A==",
       "dependencies": [
@@ -91,6 +95,7 @@
       "jsr:@std/assert@1",
       "jsr:@std/cli@*",
       "jsr:@std/streams@1",
+      "npm:@imagemagick/magick-wasm@^0.0.36",
       "npm:bun-types@*",
       "npm:echarts@^5.6.0"
     ]

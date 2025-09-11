@@ -1,9 +1,14 @@
 #cloud-config
 bootcmd:
-  - [ mkdir, "-p", /media/lower, /media/upper, /media/work]
+  - [mkdir, "-p", /media/lower, /media/upper, /media/work]
 mounts:
-  - [ myshare, /media/lower, 9p, "trans=virtio,version=9p2000.L" ]
-  - [ overlay, /mnt, overlay, "defaults,lowerdir=/media/lower,upperdir=/media/upper,workdir=/media/work"]
+  - [myshare, /media/lower, 9p, "trans=virtio,version=9p2000.L"]
+  - [
+      overlay,
+      /mnt,
+      overlay,
+      "defaults,lowerdir=/media/lower,upperdir=/media/upper,workdir=/media/work",
+    ]
 runcmd:
   - "cd /mnt/examples && PATH=/mnt/examples/nested/target:$PATH deno run --allow-all bench.ts"
   - poweroff
