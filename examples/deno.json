@@ -2,6 +2,7 @@
   "exclude": ["**/target/"],
   "imports": {
     "@std/assert": "jsr:@std/assert@1",
+    "@std/cli/parse-args": "jsr:@std/cli/parse-args",
     "@std/streams": "jsr:@std/streams@1",
     "bun": "npm:bun-types/bun.d.ts",
     "bun:ffi": "npm:bun-types/ffi.d.ts",

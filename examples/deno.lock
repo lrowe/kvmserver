@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@std/assert@1": "1.0.13",
     "jsr:@std/bytes@^1.0.5": "1.0.6",
+    "jsr:@std/cli@*": "1.0.22",
     "jsr:@std/internal@^1.0.6": "1.0.7",
     "jsr:@std/streams@1": "1.0.9",
     "npm:@types/node@*": "22.15.15",
@@ -19,6 +20,9 @@
     },
     "@std/bytes@1.0.6": {
       "integrity": "f6ac6adbd8ccd99314045f5703e23af0a68d7f7e58364b47d2c7f408aeb5820a"
+    },
+    "@std/cli@1.0.22": {
+      "integrity": "50d1e4f87887cb8a8afa29b88505ab5081188f5cad3985460c3b471fa49ff21a"
     },
     "@std/internal@1.0.7": {
       "integrity": "39eeb5265190a7bc5d5591c9ff019490bd1f2c3907c044a11b0d545796158a0f"
@@ -85,6 +89,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@1",
+      "jsr:@std/cli@*",
       "jsr:@std/streams@1",
       "npm:bun-types@*",
       "npm:echarts@^5.6.0"

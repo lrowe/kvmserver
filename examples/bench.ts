@@ -1,14 +1,41 @@
 import * as echarts from "echarts";
 import { assertEquals } from "@std/assert";
+import { parseArgs } from "@std/cli/parse-args";
 import { kvmServerCommand, waitForLine } from "./testutil.ts";
+
+const flags = parseArgs(Deno.args, {
+  string: ["group", "bench", "duration", "timeout", "warmup"],
+  collect: ["group", "bench"],
+  alias: { g: "group", b: "bench", t: "timeout", w: "warmup", z: "duration" },
+  default: {
+    duration: "1s",
+    timeout: "5s",
+    warmup: "1000",
+  },
+});
+
+function parseTime(value: string): number {
+  const m = value.trim().match(/^(\d+(?:\.\d+)?)(h|m|s|ms|us)$/);
+  if (m) {
+    const [_all, num, mag] = m;
+    const magnitude = { h: 3600, m: 60, s: 1, ms: 0.001, us: 0.000001 }[mag] ??
+      1;
+    const result = Number(num) / magnitude;
+    if (!Number.isNaN(result)) {
+      return result;
+    }
+  }
+  throw new Error(`Unknown time: ${value}`);
+}
 
 const path = "./bench.sock";
 const args = [path];
 const cwd = import.meta.dirname;
 const ephemeral = true;
 const allowAll = true;
-const warmup = 1000;
-const duration = Deno.args[0] ?? "1s";
+const warmupRequests = Number(flags.warmup);
+const duration = flags.duration;
+const warmupRequestTimeout = parseTime(flags.timeout);
 
 type OhaPercentiles = {
   "p10": number;
@@ -52,12 +79,45 @@ type OhaResults = {
   "errorDistribution": Record<string, number>;
 };
 
+const warmup =
+  (requestInit: RequestInit, n: number, path?: string) => async () => {
+    using client = Deno.createHttpClient({
+      proxy: path ? { transport: "unix", path } : undefined,
+    });
+    for (let i = 0; i < n; i++) {
+      const controller = new AbortController();
+      const id = warmupRequestTimeout
+        ? setTimeout(
+          () =>
+            controller.abort(
+              `Timeout: request ${i + 1} after ${flags.timeout}`,
+            ),
+          warmupRequestTimeout * 1000,
+        )
+        : undefined;
+      try {
+        const response = await fetch("http://127.0.0.1:8000/", {
+          client,
+          signal: controller.signal,
+          ...requestInit,
+        });
+        await response.bytes();
+        if (!response.ok) {
+          throw new Error(
+            `Warmup bad response: ${response.status} ${response.statusText}`,
+          );
+        }
+      } finally {
+        clearTimeout(id);
+      }
+    }
+  };
+
 async function oha(
   ...ohaArgs: string[]
 ): Promise<OhaResults> {
   const args = [
     ...ohaArgs,
-    "--wait-ongoing-requests-after-deadline",
     "--no-tui",
     "--output-format=json",
     "http://127.0.0.1:8000/",
@@ -65,6 +125,13 @@ async function oha(
   const command = new Deno.Command("oha", { args });
   console.log(["oha", ...args].join(" "));
   const output = await command.output();
+  if (!output.success) {
+    throw new Error(
+      `oha status code: ${output.code}\n${
+        new TextDecoder("utf-8").decode(output.stderr)
+      }`,
+    );
+  }
   return JSON.parse(new TextDecoder("utf-8").decode(output.stdout));
 }
 
@@ -77,11 +144,91 @@ const waitForLineStartsWith =
       }),
     ]);
 
+const cleanupPath = () => Deno.remove(path).catch(() => {});
+
 type NamedOhaResults = { name: string } & OhaResults;
+
+class Bench {
+  name: string;
+  command: Deno.Command;
+  ready: (proc: Deno.ChildProcess) => Promise<void>;
+  ohaArgs: string[];
+  warmupFn?: () => Promise<void>;
+  cleanupFn?: () => Promise<void>;
+
+  constructor(
+    name: string,
+    command: Deno.Command,
+    ready: (proc: Deno.ChildProcess) => Promise<void>,
+    ohaArgs: string[] = [],
+    warmupFn?: () => Promise<void>,
+    cleanupFn?: () => Promise<void>,
+  ) {
+    this.name = name;
+    this.command = command;
+    this.ready = ready;
+    this.ohaArgs = ohaArgs;
+    this.warmupFn = warmupFn;
+    this.cleanupFn = cleanupFn;
+  }
+  async run(): Promise<NamedOhaResults> {
+    try {
+      await using proc = this.command.spawn();
+      await this.ready(proc);
+      await Promise.race([
+        this.warmupFn?.(),
+        proc.status.then(({ code }) => {
+          throw new Error(`Status code: ${code}`);
+        }),
+      ]);
+      const results = await oha(...this.ohaArgs);
+      const { "aborted due to deadline": _ignore, ...errorDistribution } =
+        results.errorDistribution;
+      assertEquals(errorDistribution, {}, "errorDistribution");
+      return { name: this.name, ...results };
+    } finally {
+      await this.cleanupFn?.();
+    }
+  }
+}
 
 class BenchGroup {
   title: string;
-  rows: NamedOhaResults[] = [];
+  benches: Bench[] = [];
+
+  constructor(title: string) {
+    this.title = title;
+  }
+
+  bench(
+    name: string,
+    command: Deno.Command,
+    ready: (proc: Deno.ChildProcess) => Promise<void>,
+    ohaArgs: string[] = [],
+    warmupFn?: () => Promise<void>,
+    cleanupFn: () => Promise<void> = cleanupPath,
+  ) {
+    this.benches.push(
+      new Bench(name, command, ready, ohaArgs, warmupFn, cleanupFn),
+    );
+  }
+
+  async run(filters: string[] = []): Promise<BenchGroupResult> {
+    const rows = [];
+    for (const bench of this.benches) {
+      if (filters.length === 0 || filters.some((s) => bench.name.includes(s))) {
+        console.log("BENCH: ", bench.name);
+        const row = await bench.run();
+        rows.push(row);
+      }
+    }
+    return new BenchGroupResult(this.title, rows);
+  }
+}
+
+class BenchGroupResult {
+  title: string;
+  rows: NamedOhaResults[];
   cols: Record<string, (row: NamedOhaResults) => string | number> = {
     name: (r) => r.name,
     average: (r) => Math.round(r.summary.average * 1_000_000),
@@ -92,30 +239,12 @@ class BenchGroup {
   format = (_name: string, value: string | number) =>
     typeof value === "number" ? `${value} µs` : value;
 
-  constructor(title: string) {
+  constructor(title: string, rows: NamedOhaResults[]) {
     this.title = title;
+    this.rows = rows;
   }
 
-  async bench(
-    name: string,
-    command: Deno.Command,
-    ready: (proc: Deno.ChildProcess) => Promise<void>,
-    ohaArgs: string[] = [],
-    warmupFn?: () => Promise<void>,
-  ) {
-    try {
-      await using proc = command.spawn();
-      await ready(proc);
-      await warmupFn?.();
-      const results = await oha(...ohaArgs);
-      assertEquals(results.errorDistribution, {}, "errorDistribution");
-      this.rows.push({ name, ...results });
-    } finally {
-      await Deno.remove(path).catch(() => {});
-    }
-  }
-
-  getData(): Record<keyof BenchGroup["cols"], string | number>[] {
+  getData(): Record<keyof BenchGroupResult["cols"], string | number>[] {
     return this.rows.map((r) =>
       Object.fromEntries(
         Object.entries(this.cols).map(([name, fn]) => [name, fn(r)]),
@@ -168,58 +297,61 @@ class BenchGroup {
   }
 }
 
-async function addBenches(title: string, program: string) {
+function kvmserverBenches(title: string, program: string) {
   const group = new BenchGroup(title);
 
-  await group.bench(
+  group.bench(
     "native (reusing connection)",
     new Deno.Command(program, { args, cwd, stderr: "piped" }),
     waitForLineStartsWith("Listening", "stderr"),
     [`--unix-socket=${path}`, "-c=1", `-z=${duration}`],
-    async () => {
-      await oha(`--unix-socket=${path}`, "-c=1", `-n=${warmup}`);
-    },
+    warmup({}, warmupRequests, path),
   );
 
-  await group.bench(
+  group.bench(
     "native",
     new Deno.Command(program, { args, cwd, stderr: "piped" }),
     waitForLineStartsWith("Listening", "stderr"),
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=1", `-z=${duration}`],
-    async () => {
-      await oha(`--unix-socket=${path}`, "-c=1", `-n=${warmup}`);
-    },
+    warmup({}, warmupRequests, path),
   );
 
-  await group.bench(
+  group.bench(
     "kvmserver threads=1 (reusing connection)",
-    kvmServerCommand({ program, args, cwd, allowAll, warmup }),
+    kvmServerCommand({ program, args, cwd, allowAll, warmup: warmupRequests }),
     waitForLineStartsWith("Program", "stdout"),
     [`--unix-socket=${path}`, "-c=1", `-z=${duration}`],
   );
 
-  await group.bench(
+  group.bench(
     "kvmserver threads=1",
-    kvmServerCommand({ program, args, cwd, allowAll, warmup }),
+    kvmServerCommand({ program, args, cwd, allowAll, warmup: warmupRequests }),
     waitForLineStartsWith("Program", "stdout"),
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=1", `-z=${duration}`],
   );
 
-  await group.bench(
+  group.bench(
     "kvmserver ephemeral threads=1",
-    kvmServerCommand({ program, args, cwd, allowAll, warmup, ephemeral }),
+    kvmServerCommand({
+      program,
+      args,
+      cwd,
+      allowAll,
+      warmup: warmupRequests,
+      ephemeral,
+    }),
     waitForLineStartsWith("Program", "stdout"),
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=1", `-z=${duration}`],
   );
 
-  await group.bench(
+  group.bench(
     "kvmserver ephemeral threads=2",
     kvmServerCommand({
       program,
       args,
       cwd,
       allowAll,
-      warmup,
+      warmup: warmupRequests,
       ephemeral,
       threads: 2,
     }),
@@ -227,14 +359,14 @@ async function addBenches(title: string, program: string) {
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=2", `-z=${duration}`],
   );
 
-  await group.bench(
+  group.bench(
     "kvmserver ephemeral threads=4",
     kvmServerCommand({
       program,
       args,
       cwd,
       allowAll,
-      warmup,
+      warmup: warmupRequests,
       ephemeral,
       threads: 4,
     }),
@@ -242,14 +374,14 @@ async function addBenches(title: string, program: string) {
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=4", `-z=${duration}`],
   );
 
-  await group.bench(
+  group.bench(
     "kvmserver ephemeral threads=2 no-tail",
     kvmServerCommand({
       program,
       args,
       cwd,
       allowAll,
-      warmup,
+      warmup: warmupRequests,
       ephemeral,
       threads: 2,
     }),
@@ -260,7 +392,7 @@ async function addBenches(title: string, program: string) {
   return group;
 }
 
-async function addWasmBenches(
+function wasmtimeBenches(
   title: string,
   program: string,
   programFetchEvent?: string,
@@ -270,9 +402,9 @@ async function addWasmBenches(
     const [wasmtime, name] of Object.entries({
       "wasmtime-reuse": "Wasmtime serve (experimental instance reuse on)",
       "wasmtime-noreuse": "Wasmtime serve (experimental instance reuse off)",
-      "wasmtime": 
-        programFetchEvent ? "Wasmtime serve (release with fetch-event)" : "Wasmtime serve (release)"
-      ,
+      "wasmtime": programFetchEvent
+        ? "Wasmtime serve (release with fetch-event)"
+        : "Wasmtime serve (release)",
     })
   ) {
     const args = [
@@ -284,20 +416,18 @@ async function addWasmBenches(
         ? programFetchEvent
         : program,
     ];
-    await group.bench(
+    group.bench(
       name,
       new Deno.Command(wasmtime, { args, cwd, stderr: "piped" }),
       waitForLineStartsWith("Serving HTTP", "stderr"),
       ["-c=1", `-z=${duration}`],
-      async () => {
-        await oha("-c=1", "-n=100");
-      },
+      warmup({}, 100),
     );
   }
   return group;
 }
 
-async function addBunForkBenches(title: string, program: string) {
+function bunForkBenches(title: string, program: string) {
   const env = {
     BUN_GC_TIMER_DISABLE: "true",
     BUN_JSC_useConcurrentGC: "false",
@@ -305,7 +435,7 @@ async function addBunForkBenches(title: string, program: string) {
     BUN_PORT: "8000",
   };
   const group = new BenchGroup(title);
-  await group.bench(
+  group.bench(
     "Bun.serve (reusing connection)",
     new Deno.Command("bun", {
       args: [program, path],
@@ -315,11 +445,9 @@ async function addBunForkBenches(title: string, program: string) {
     }),
     waitForLineStartsWith("Started", "stdout"),
     [`--unix-socket=${path}`, "-c=1", `-z=${duration}`],
-    async () => {
-      await oha(`--unix-socket=${path}`, "-c=1", "-n=100");
-    },
+    warmup({}, 100, path),
   );
-  await group.bench(
+  group.bench(
     "process forking",
     new Deno.Command("bun", {
       args: ["bun/fork.ts", program, path],
@@ -329,19 +457,12 @@ async function addBunForkBenches(title: string, program: string) {
     }),
     waitForLineStartsWith("Started", "stdout"),
     [`--unix-socket=${path}`, "--disable-keepalive", "-c=1", `-z=${duration}`],
-    async () => {
-      await oha(
-        `--unix-socket=${path}`,
-        "--disable-keepalive",
-        "-c=1",
-        "-n=100",
-      );
-    },
+    warmup({ headers: { connection: "close" } }, 100, path),
   );
   return group;
 }
 
-async function addIsolateBenches(title: string, program: string) {
+function isolateBenches(title: string, program: string) {
   const group = new BenchGroup(title);
   for (
     const [server, name] of Object.entries({
@@ -351,92 +472,93 @@ async function addIsolateBenches(title: string, program: string) {
     })
   ) {
     const args = [server, program, "8000"];
-    await group.bench(
+    group.bench(
       name,
       new Deno.Command("node", { args, cwd, stdout: "piped" }),
       waitForLineStartsWith("Listening", "stdout"),
       ["-c=1", `-z=${duration}`],
-      async () => {
-        await oha("-c=1", "-n=100");
-      },
+      warmup({}, 100),
     );
   }
   return group;
 }
 
-const httpserver = await addBenches(
-  "Rust minimal http server (async epoll)",
-  "./rust/target/release/httpserver",
-);
-const httpserversync = await addBenches(
-  "Rust minimal http server (sync blocking)",
-  "./rust/target/release/httpserversync",
-);
-const helloworld = await addBenches(
-  "Deno helloworld",
-  "./deno/target/helloworld",
-);
-const renderer = await addBenches(
-  "Deno React page rendering",
-  "./deno/target/renderer",
-);
-const wasmtime_rust = await addWasmBenches(
-  "Wasmtime helloworld.rs",
-  "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm",
-);
+const groups = [
+  kvmserverBenches(
+    "Rust minimal http server (async epoll)",
+    "./rust/target/release/httpserver",
+  ),
+  kvmserverBenches(
+    "Rust minimal http server (sync blocking)",
+    "./rust/target/release/httpserversync",
+  ),
+  kvmserverBenches(
+    "Deno helloworld",
+    "./deno/target/helloworld",
+  ),
+  kvmserverBenches(
+    "Deno React page rendering",
+    "./deno/target/renderer",
+  ),
+  wasmtimeBenches(
+    "Wasmtime helloworld.rs",
+    "./wasmtime/ext/hello-wasi-http/target/wasm32-wasip2/release/hello_wasi_http.wasm",
+  ),
+  wasmtimeBenches(
+    "Wasmtime helloworld.js",
+    "./wasmtime/target/helloworld-incoming.wasm",
+    "./wasmtime/target/helloworld.wasm",
+  ),
+  wasmtimeBenches(
+    "Wasmtime React page rendering",
+    "./wasmtime/target/renderer-incoming.wasm",
+    "./wasmtime/target/renderer.wasm",
+  ),
+  bunForkBenches(
+    "Bun process forking helloworld",
+    "./bun/helloworld.js",
+  ),
+  bunForkBenches(
+    "Bun process forking React page rendering",
+    "./bun/target/renderer.mjs",
+  ),
+  isolateBenches(
+    "Node isolated-vm helloworld",
+    "node-isolated-vm/helloworld.cjs",
+  ),
+  isolateBenches(
+    "Node isolated-vm React server rendering",
+    "node-isolated-vm/target/renderer.js",
+  ),
+];
 
-const wasmtime_helloworld = await addWasmBenches(
-  "Wasmtime helloworld.js",
-  "./wasmtime/target/helloworld-incoming.wasm",
-  "./wasmtime/target/helloworld.wasm",
-);
+const results = [];
+for (const group of groups) {
+  if (
+    flags.group.length === 0 || flags.group.some((s) => group.title.includes(s))
+  ) {
+    console.log("GROUP: ", group.title);
+    const result = await group.run(flags.bench);
+    results.push(result);
+  }
+}
+const md = `\
+![](./bench.svg)
 
-const wasmtime_renderer = await addWasmBenches(
-  "Wasmtime React page rendering",
-  "./wasmtime/target/renderer-incoming.wasm",
-  "./wasmtime/target/renderer.wasm",
-);
-
-const bun_fork_helloworld = await addBunForkBenches(
-  "Bun process forking helloworld",
-  "./bun/helloworld.js",
-);
-const bun_fork_renderer = await addBunForkBenches(
-  "Bun process forking React page rendering",
-  "./bun/target/renderer.mjs",
-);
-
-const isolate_helloworld = await addIsolateBenches(
-  "Node isolated-vm helloworld",
-  "node-isolated-vm/helloworld.cjs",
-);
-
-const isolate_renderer = await addIsolateBenches(
-  "Node isolated-vm React server rendering",
-  "node-isolated-vm/target/renderer.js",
-);
-
-const md = [
-  "![](./bench.svg)",
-  httpserver,
-  httpserversync,
-  helloworld,
-  renderer,
-  wasmtime_rust,
-  wasmtime_helloworld,
-  wasmtime_renderer,
-  bun_fork_helloworld,
-  bun_fork_renderer,
-  isolate_helloworld,
-  isolate_renderer,
-].map(String).join("\n\n");
+${results.map(String).join("\n\n")}
+`;
 console.log(md);
+Deno.mkdirSync("target", { recursive: true });
+Deno.writeTextFileSync("target/bench.md", md);
 
-delete renderer.cols["average"];
-renderer.rows.splice(0, 1);
-renderer.rows.splice(1, 1);
-renderer.title += " native vs TinyKVM ephemeral VMs";
-const svg = renderer.toChart();
-await Deno.mkdir("target", { recursive: true });
-await Deno.writeTextFile("target/bench.svg", svg);
-await Deno.writeTextFile("target/bench.md", md);
+for (const result of results) {
+  if (result.title === "Deno React page rendering") {
+    delete result.cols["average"];
+    result.rows.splice(0, 1);
+    result.rows.splice(1, 1);
+    result.title += " native vs TinyKVM ephemeral VMs";
+    const svg = result.toChart();
+    Deno.writeTextFileSync("target/bench.svg", svg);
+    break;
+  }
+}
