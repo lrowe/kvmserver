@@ -20,6 +20,7 @@ type KvmServerCommandOptions = {
   allowAll?: boolean;
   warmup?: number;
   threads?: number;
+  extra?: string[];
 };
 
 export function kvmServerCommand(
@@ -35,6 +36,7 @@ export function kvmServerCommand(
     ...options.warmup !== undefined ? ["--warmup", String(options.warmup)] : [],
     ...options.allowAll ? ["--allow-all"] : [],
     ...options.ephemeral ? ["--ephemeral"] : [],
+    ...options.extra ?? [],
     "--",
     options.program,
     ...options.args ?? [],
