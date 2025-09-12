@@ -1,4 +1,3 @@
-use httparse;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::io::Read;

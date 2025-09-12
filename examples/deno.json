@@ -1,6 +1,11 @@
 {
-  "exclude": ["node-isolated-vm/", "wasmtime/", "**/target/"],
-
+  "exclude": [
+    "node-isolated-vm/",
+    "wasmtime/",
+    "**/target/",
+    "**/.cache/",
+    "**/.cargo/"
+  ],
   "imports": {
     "@imagemagick/magick-wasm": "npm:@imagemagick/magick-wasm@^0.0.36",
     "@std/assert": "jsr:@std/assert@1",

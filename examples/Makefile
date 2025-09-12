@@ -47,4 +47,4 @@ bench: build
 
 # Do not recurse for test
 test: build
-	deno test --allow-all --quiet .
+	deno test --allow-all .
