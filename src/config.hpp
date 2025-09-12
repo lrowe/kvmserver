@@ -36,6 +36,8 @@ struct Configuration
 	bool     ephemeral_keep_working_memory = true;
 	bool     verbose = false;
 	bool     verbose_syscalls = false;
+	bool     verbose_mmap_syscalls = false;
+	bool     verbose_thread_syscalls = false;
 	bool     verbose_pagetable = false;
 
 	std::vector<std::string> environ;

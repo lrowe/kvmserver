@@ -301,18 +301,13 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_option("-t,--threads", config.concurrency, "Number of request VMs (0 to use cpu count)")->capture_default_str();
 	app.add_flag("-e,--ephemeral", config.ephemeral, "Use ephemeral VMs");
 	app.add_option("-w,--warmup", config.warmup_connect_requests, "Number of warmup requests")->capture_default_str();
-	// -vv include syscalls, -vvv also include memory maps
-	app.add_flag("-v,--verbose", [&](uint verbose) {
-		if (verbose >= 1) {
-			config.verbose = true;
-		}
-		if (verbose >= 2) {
-			config.verbose_syscalls = true;
-		}
-		if (verbose >= 3) {
-			config.verbose_pagetable = true;
-		}
-	}, "Enable verbose output");
+
+	app.add_flag("-v,--verbose", config.verbose, "Enable verbose output")->group("Verbose");
+	app.add_flag("--verbose-syscalls", config.verbose_syscalls, "Enable verbose syscall output")->group("Verbose");
+	app.add_flag("--verbose-mmap-syscalls", config.verbose_mmap_syscalls, "Enable verbose mmap syscall output")->group("Verbose");
+	app.add_flag("--verbose-thread-syscalls", config.verbose_thread_syscalls, "Enable verbose thread syscall output")->group("Verbose");
+	app.add_flag("--verbose-pagetables", config.verbose_pagetable, "Enable verbose pagetable output")->group("Verbose");
+
 	app.add_flag("--allow-all", [&](bool allow_all) {
 		if (allow_all) {
 			allow_read.emplace_back("/");
