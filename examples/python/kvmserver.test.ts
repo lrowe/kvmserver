@@ -51,7 +51,12 @@ console.log(Deno.env.toObject())
   );
   Deno.test(
     "uvicorn wsgi ephemeral",
-    testHelloWorld({ ...common, args, ephemeral }),
+    testHelloWorld({
+      ...common,
+      args,
+      ephemeral,
+      extra: ["--verbose", "--verbose-syscalls", "--verbose-mmap-syscalls"],
+    }),
   );
   Deno.test(
     "uvicorn wsgi ephemeral warmup",
