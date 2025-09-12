@@ -650,7 +650,7 @@ void VirtualMachine::init_kvm()
 void VirtualMachine::open_debugger()
 {
 	const uint16_t port = 2159;
-	tinykvm::RSP server(machine(), port);
+	tinykvm::RSP server(this->config().filename, machine(), port);
 	while (true) {
 		fprintf(stderr, "Waiting 60s for remote GDB on port %u...\n", port);
 		auto client = server.accept(60);

@@ -370,6 +370,22 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		for (auto& path : allow_write) {
 			ensure_path(path, path, config.allowed_paths, false, true, false);
 		}
+		// Always allow these (harmless) paths
+		ensure_path("/dev/urandom", "/dev/urandom", config.allowed_paths, true, false, true);
+		ensure_path("/dev/null", "/dev/null", config.allowed_paths, true, true, true);
+		ensure_path("/dev/zero", "/dev/zero", config.allowed_paths, true, true, true);
+		// Create a fake tempfile for /proc/self/maps
+		std::string fake_maps_filepath = std::tmpnam(nullptr);
+		const std::string fake_maps = // XXX: Leaking real filename?
+			"000000000000-ffffffffffff r--p 00000000 103:02 48895346                  " + config.filename + "\n";
+		FILE *f = fopen(fake_maps_filepath.c_str(), "w");
+		if (f == nullptr) {
+			throw CLI::ValidationError("fopen: Unable to create temporary file", "");
+		}
+		fwrite(fake_maps.data(), 1, fake_maps.size(), f);
+		fclose(f);
+		ensure_path("/proc/self/maps", fake_maps_filepath, config.allowed_paths, true, false, true);
+
 		for (const std::string& triple : volume) {
 			auto parts = split(triple, ':');
 			auto it = parts.begin();
