@@ -47,4 +47,3 @@ jobs:
           docker rm -v bin
           gzip kvmserver
           gh release upload ${{ github.ref_name }} kvmserver.gz
-  

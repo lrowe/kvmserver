@@ -13,6 +13,9 @@ env:
   GIT_SUFFIX: "-git.${{ github.sha }}"
 jobs:
   build:
+    outputs:
+      bin_tag: "bin${{ env.RUN_SUFFIX }}"
+      test_tag: "test${{ env.RUN_SUFFIX }}"
     permissions:
       packages: write
     runs-on: ubuntu-24.04
@@ -35,11 +38,6 @@ jobs:
                 core.exportVariable(key, value);
               }
             }
-      - name: Enable KVM group perms
-        run: |
-            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-            sudo udevadm control --reload-rules
-            sudo udevadm trigger --name-match=kvm
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -74,9 +72,34 @@ jobs:
             --load \
             --push \
             --target bin .
-      - name: Test
+  test_matrix:
+    name: ${{ matrix.target }}
+    needs: ["build"]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ["test", "bench", "check", "fmt", "lint"]
+    env:
+      BIN_TAG: ${{needs.build.outputs.bin_tag}}
+      TEST_TAG: ${{needs.build.outputs.test_tag}}
+    steps:
+      - name: System info
         run: |
-          docker run --rm --mount type=image,src="$IMAGE:bin$RUN_SUFFIX",dst=/mnt --device /dev/kvm "$IMAGE:test$RUN_SUFFIX"
-      - name: Bench
+          uname -a
+          cat /proc/cpuinfo
+      - name: Enable KVM group perms
         run: |
-          docker run --rm --mount type=image,src="$IMAGE:bin$RUN_SUFFIX",dst=/mnt --device /dev/kvm "$IMAGE:test$RUN_SUFFIX" deno run --allow-all bench.ts
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Log in to registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Pull image
+        run: |
+          docker pull "$IMAGE:$BIN_TAG"
+          docker pull "$IMAGE:$TEST_TAG"
+      - name: make ${{ matrix.target }}
+        run: |
+          docker run --rm --mount type=image,src="$IMAGE:$BIN_TAG",dst=/mnt --device /dev/kvm "$IMAGE:$TEST_TAG" make ${{ matrix.target }}
