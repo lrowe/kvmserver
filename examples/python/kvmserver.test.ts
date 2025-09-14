@@ -8,9 +8,6 @@ const common = {
 const ephemeral = true;
 const warmup = 1;
 
-console.log("XXX env")
-console.log(Deno.env.toObject())
-
 {
   const args = ["hellowsgi.py"];
   Deno.test(
