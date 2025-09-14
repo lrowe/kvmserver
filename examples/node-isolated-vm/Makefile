@@ -1,7 +1,4 @@
 .PHONY: build check clean fmt lint test
-bench: build
-	node --no-node-snapshot index.js hello.js
-	node --no-node-snapshot index.js target/renderer.js
 build: target/renderer.js node_modules
 node_modules:
 	npm install

@@ -1,7 +1,4 @@
 .PHONY: build check clean fmt lint test
-bench: build
-	bun fork.js ./hello.js
-	bun fork.js ./target/renderer.mjs
 build: target/renderer.mjs
 target/renderer.mjs:
 	mkdir -p target

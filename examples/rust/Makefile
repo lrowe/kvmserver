@@ -1,6 +1,6 @@
 .PHONY: build check clean fmt lint test
-build:
-	cargo build
+build: target/release/httpserver target/release/httpserversync
+target/release/httpserver target/release/httpserversync: Cargo.lock Cargo.toml $(wildcard src/**/*.rs)
 	cargo build --release
 check:
 	cargo check

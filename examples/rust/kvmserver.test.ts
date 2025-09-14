@@ -8,7 +8,7 @@ const ephemeral = true;
 const warmup = 1;
 
 {
-  const program = "./target/debug/httpserver";
+  const program = "./target/release/httpserver";
   Deno.test(
     "httpserver",
     testHelloWorld({ ...common, program }),
@@ -24,7 +24,7 @@ const warmup = 1;
 }
 
 {
-  const program = "./target/debug/httpserversync";
+  const program = "./target/release/httpserversync";
   Deno.test(
     "httpserversync",
     testHelloWorld({ ...common, program }),

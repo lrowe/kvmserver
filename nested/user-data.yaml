@@ -1,14 +1,62 @@
 #cloud-config
+password: ubuntu
+chpasswd: { expire: False }
+ssh_pwauth: True
 bootcmd:
-  - [mkdir, "-p", /media/lower, /media/upper, /media/work]
+  - [
+      mkdir,
+      "-p",
+      /media/local-lower,
+      /media/local-upper,
+      /media/local-work,
+      /media/mnt-lower,
+      /media/mnt-upper,
+      /media/mnt-work,
+      /media/nvm-lower,
+      /media/nvm-upper,
+      /media/nvm-work,
+    ]
 mounts:
-  - [myshare, /media/lower, 9p, "trans=virtio,version=9p2000.L"]
+  - [bin, /usr/local/bin, 9p, "ro,trans=virtio,version=9p2000.L"]
+  - [local, /media/local-lower, 9p, "ro,trans=virtio,version=9p2000.L"]
+  - [
+      overlay,
+      /media/local,
+      overlay,
+      "defaults,x-systemd.requires-mounts-for=/media/local-lower,lowerdir=/media/local-lower,upperdir=/media/local-upper,workdir=/media/local-work",
+    ]
+  - [mnt, /media/mnt-lower, 9p, "ro,trans=virtio,version=9p2000.L"]
   - [
       overlay,
       /mnt,
       overlay,
-      "defaults,lowerdir=/media/lower,upperdir=/media/upper,workdir=/media/work",
+      "defaults,x-systemd.requires-mounts-for=/media/mnt-lower,lowerdir=/media/mnt-lower,upperdir=/media/mnt-upper,workdir=/media/mnt-work",
     ]
+  - [nvm, /media/nvm-lower 9p, "ro,trans=virtio,version=9p2000.L"]
+  - [
+      overlay,
+      /media/nvm,
+      overlay,
+      "defaults,x-systemd.requires-mounts-for=/media/nvm-lower,lowerdir=/media/nvm-lower,upperdir=/media/mnt-upper,workdir=/media/mnt-work",
+    ]
+apt:
+  sources:
+    docker.list:
+      source: deb [arch=amd64] https://download.docker.com/linux/ubuntu $RELEASE stable
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+packages:
+  - docker-ce
+  - docker-ce-cli
+  - make
 runcmd:
-  - "cd /mnt/examples && PATH=/mnt/examples/nested/target:$PATH deno run --allow-all bench.ts"
-  - poweroff
+  - [usermod, -a, -G, "docker,kvm", ubuntu]
+  - [sudo, -u, ubuntu, ln, -s, /media/local, /home/ubuntu/.local]
+  - [ln, -s, /media/nvm, /home/ubuntu/.nvm]
+  - [ln, -s, /media/nvm, /home/ubuntu/.nvm]
+  - echo '. "$HOME/.nvm/nvm.sh"' >> home/ubuntu/.profile
+power_state:
+  delay: now
+  mode: poweroff
+  message: Powering off after Cloud-init completion
+  timeout: 2
+  condition: true
