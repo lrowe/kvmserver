@@ -48,7 +48,7 @@ bindir: target/bin/bun target/bin/deno target/bin/lune target/bin/oha target/bin
 target/bin/bun:
 	mkdir -p target/bin
 	curl -fsSLo target/bun-linux-x64.zip https://github.com/oven-sh/bun/releases/download/bun-v1.2.21/bun-linux-x64.zip
-	unzip -jo bun-linux-x64.zip -d target/bin/
+	unzip -jo target/bun-linux-x64.zip -d target/bin/
 	rm target/bun-linux-x64.zip
 
 target/bin/deno:
