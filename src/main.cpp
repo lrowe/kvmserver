@@ -14,8 +14,31 @@ int main(int argc, char* argv[], char* envp[])
 		// Read the binary file
 		MmapFile binary_file(config.filename);
 
+		std::unique_ptr<MmapFile> storage_binary_file;
+		std::unique_ptr<VirtualMachine> storage_vm;
+		std::mutex storage_vm_mutex;
+		if (config.storage) {
+			// Load the storage VM binary
+			storage_binary_file = std::make_unique<MmapFile>(config.filename);
+			// Create the storage VM
+			storage_vm = std::make_unique<VirtualMachine>(storage_binary_file->view(), config, true);
+			// Make sure only one thread at a time can access the storage VM
+			storage_vm->machine().cpu().remote_serializer = &storage_vm_mutex;
+			auto init = storage_vm->initialize(nullptr, false);
+			if (!storage_vm->is_waiting_for_requests()) {
+				fprintf(stderr, "The storage VM did not wait for requests\n");
+				return 1;
+			}
+			storage_binary_file->dontneed(); // Lazily drop pages from the file
+			printf("Storage VM initialized. init=%lums\n", init.initialization_time.count());
+		}
+
 		// Create a VirtualMachine instance
 		VirtualMachine vm(binary_file.view(), config);
+		if (storage_vm) {
+			// Link the storage VM into the main VM
+			vm.machine().remote_connect(storage_vm->machine());
+		}
 		// Initialize the VM by running through main()
 		// and then do a warmup, if required
 		const bool just_one_vm = (config.concurrency == 1 && !config.ephemeral);

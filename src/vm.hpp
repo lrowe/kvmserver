@@ -37,12 +37,14 @@ struct VirtualMachine
 	void set_on_reset_callback(on_reset_t callback) noexcept { m_on_reset_callback = std::move(callback); }
 	void set_ephemeral(bool ephemeral) noexcept { m_ephemeral = ephemeral; }
 	bool is_ephemeral() const noexcept { return m_ephemeral; }
+	bool is_storage() const noexcept { return m_is_storage; }
+	unsigned reqid() const noexcept { return m_reqid; }
 	PollMethod poll_method() const noexcept { return m_poll_method; }
 
 	void warmup();
 	void open_debugger();
 
-	VirtualMachine(std::string_view binary, const Configuration& config);
+	VirtualMachine(std::string_view binary, const Configuration& config, bool storage = false);
 	VirtualMachine(const VirtualMachine& other, unsigned reqid);
 	~VirtualMachine();
 	struct InitResult {
@@ -65,6 +67,7 @@ private:
 	BinaryType m_binary_type = BinaryType::Static;
 	unsigned m_reqid = 0;
 	bool m_ephemeral = false;
+	bool m_is_storage = false;
 	bool m_reset_needed = false;
 	bool m_waiting_for_requests = false;
 	bool m_blocking_connections = false;

@@ -2,6 +2,7 @@
 
 #include "settings.hpp"
 #include <cstring>
+#include <elf.h>
 #include <fcntl.h>
 #include <filesystem>
 #include <netinet/in.h>
@@ -16,16 +17,49 @@
 extern std::vector<uint8_t> file_loader(const std::string& filename);
 static std::vector<uint8_t> ld_linux_x86_64_so;
 
+static bool is_interpreted_binary(std::string_view binary)
+{
+	if (binary.size() < 128U)
+		throw std::runtime_error("Invalid ELF program (binary too small)");
+
+	const tinykvm::DynamicElf dyn_elf = tinykvm::is_dynamic_elf(binary);
+	return dyn_elf.has_interpreter();
+}
+static uint64_t detect_gigapage_from(std::string_view binary, uint64_t dylink_address_hint)
+{
+	if (dylink_address_hint >= (1ULL << 30U)) {
+		const tinykvm::DynamicElf dyn_elf = tinykvm::is_dynamic_elf(binary);
+		// We can only use a dylink address hint if the binary is dynamic
+		if (dyn_elf.is_dynamic)
+			return (dylink_address_hint >> 30U) << 30U; // Aligned to gigapage
+	}
+
+	if (binary.size() < 128U)
+		throw std::runtime_error("Invalid ELF program (binary too small)");
+	auto* elf = (Elf64_Ehdr *)binary.data();
+
+	auto start_address_gigapage = elf->e_entry >> 30U;
+	if (start_address_gigapage >= 512)
+		throw std::runtime_error("Invalid ELF start address (address was > 512GiB)");
+
+	return start_address_gigapage << 30U;
+}
 static const std::string_view select_main_binary(std::string_view program_binary)
 {
-	const tinykvm::DynamicElf dyn_elf = tinykvm::is_dynamic_elf(
-		std::string_view{(const char *)program_binary.data(), program_binary.size()});
+	const tinykvm::DynamicElf dyn_elf = tinykvm::is_dynamic_elf(program_binary);
 	if (dyn_elf.has_interpreter()) {
 		// Add the dynamic linker as first argument
 		return std::string_view((const char*)ld_linux_x86_64_so.data(),
 			ld_linux_x86_64_so.size());
 	}
 	return program_binary;
+}
+static uint64_t dylink_address(const Configuration& config, bool storage)
+{
+	if (storage) {
+		return config.storage_dylink_address_hint;
+	}
+	return config.dylink_address_hint;
 }
 
 static bool lookup_allowed_path(
@@ -56,7 +90,8 @@ static bool lookup_allowed_path(
 		// otherwise lookup the common prefix
 		it = allowed_paths.upper_bound(std::accumulate(path.begin(), path_it, std::filesystem::path("/"), std::divides{}));
 		if (--failsafe == 0) {
-			fprintf(stderr, "lookup_allowed_path: failsafe triggered for path %s\n", pathinout.c_str());
+			if (getenv("VERBOSE") != nullptr)
+				fprintf(stderr, "lookup_allowed_path: failsafe triggered for path %s\n", pathinout.c_str());
 			break;
 		}
 	}
@@ -118,27 +153,62 @@ static bool validate_network_access(
 	return false;
 }
 
-VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& config)
+VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& config, bool storage)
 	: m_machine(select_main_binary(binary), tinykvm::MachineOptions{
 		.max_mem = config.max_address_space,
 		.max_cow_mem = 0UL,
-		.dylink_address_hint = config.dylink_address_hint,
-		.heap_address_hint = config.heap_address_hint,
-		.remappings {config.vmem_remappings},
+		.dylink_address_hint = dylink_address(config, storage),
+		.heap_address_hint = storage ? 0 : config.heap_address_hint,
+		.vmem_base_address = detect_gigapage_from(binary, dylink_address(config, storage)),
+		.remappings {storage ? config.storage_remappings : config.vmem_remappings},
 		.verbose_loader = config.verbose,
 		.hugepages = config.hugepage_arena_size != 0,
 		.master_direct_memory_writes = true,
 		.split_hugepages = false,
-		.relocate_fixed_mmap = config.relocate_fixed_mmap,
 		.executable_heap = config.executable_heap,
-		.mmap_backed_files = config.mmap_backed_files,
+		.mmap_backed_files = storage ? false : config.mmap_backed_files,
 		.hugepages_arena_size = config.hugepage_arena_size,
 	}),
 	m_config(config),
 	m_original_binary(binary),
-	m_ephemeral(config.ephemeral)
+	m_ephemeral(config.ephemeral),
+	m_is_storage(storage)
 {
 	machine().set_userdata<VirtualMachine> (this);
+	machine().install_unhandled_syscall_handler(
+		[] (tinykvm::vCPU& cpu, unsigned syscall_number) {
+			auto& vm = *cpu.machine().get_userdata<VirtualMachine>();
+			switch (syscall_number) {
+			case 67339: // sys_remote_resume
+				if (!vm.is_storage()) {
+					// Remember buffer address and length values
+					const uint64_t src = cpu.registers().rdi;
+					const uint64_t len = cpu.registers().rsi;
+
+					vm.machine().ipre_remote_resume_now(false,
+					[src, len] (tinykvm::Machine& m) {
+						m.copy_to_guest(m.registers().rdi, &src, sizeof(src));
+						m.registers().rax = len;
+					});
+					return;
+				}
+				throw std::runtime_error("sys_remote_resume should *NOT* be called from storage VM");
+			case 65538: // sys_wait_for_storage_task_paused
+				if (vm.is_storage()) {
+					vm.set_waiting_for_requests(true);
+					cpu.stop();
+					return;
+				}
+				throw std::runtime_error("sys_wait_for_storage_task_paused should *ONLY* be called from storage VM");
+			}
+			std::string info;
+			if (vm.is_storage())
+				info = " (storage)";
+			else
+				info = " (request " + std::to_string(vm.reqid()) + ")";
+			fprintf(stderr, "Unhandled syscall %d in VM %s%s\n",
+				syscall_number, vm.name().c_str(), info.c_str());
+		});
 	machine().set_verbose_system_calls(
 		config.verbose_syscalls);
 	machine().set_verbose_mmap_syscalls(
@@ -222,7 +292,6 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 		.max_mem = other.config().max_main_memory,
 		.max_cow_mem = other.config().max_req_mem,
 		.split_hugepages = other.config().split_hugepages,
-		.relocate_fixed_mmap = other.config().relocate_fixed_mmap,
 		.hugepages_arena_size = other.config().hugepage_arena_size,
 	  }),
 	  m_config(other.m_config),
@@ -230,6 +299,7 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	  m_binary_type(other.m_binary_type),
 	  m_reqid(reqid),
 	  m_ephemeral(other.m_ephemeral),
+	  m_is_storage(false),
 	  m_master_instance(&other),
 	  m_poll_method(other.m_poll_method)
 {
@@ -360,7 +430,8 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			// Fake filename for the program using the name of the tenant
 			args.push_back(name());
 		}
-		std::vector<std::string> main_arguments = config().main_arguments;
+		const std::vector<std::string>& main_arguments =
+			(m_is_storage) ? config().storage_arguments : config().main_arguments;
 		args.insert(args.end(), main_arguments.begin(), main_arguments.end());
 
 		std::vector<std::string> envp = config().environ;
@@ -516,7 +587,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 		machine().fds().accept_callback = nullptr;
 		machine().fds().set_preempt_epoll_wait(false);
 
-		if (!just_one_vm)
+		if (!just_one_vm && !m_is_storage)
 		{
 			// The VM is currently paused in kernel mode in a system call handler
 			// so we need manully return to user mode
@@ -529,6 +600,11 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 
 			// Make forkable (with *NO* working memory)
 			machine().prepare_copy_on_write(0UL);
+		} else if (is_storage()) {
+			// Skip over OUT instruction
+			auto& regs = machine().registers();
+			regs.rip += 2;
+			machine().set_registers(regs);
 		}
 
 		// Finish measuring initialization time

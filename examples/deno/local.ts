@@ -1,0 +1,29 @@
+console.log("Hello from Deno inside TinyKVM");
+const drogon = Deno.dlopen("/home/gonzo/github/kvmserver/examples/deno/liblocal.so", {
+	remote_resume: { parameters: ["buffer", "usize"], result: "void" },
+});
+function getZeroTerminatedString(buffer, encoding = 'utf8') {
+	const nullByteIndex = buffer.indexOf(0x00);
+	const slice = nullByteIndex !== -1 ? buffer.slice(0, nullByteIndex) : buffer;
+	return new TextDecoder(encoding).decode(slice);
+}
+function getRemoteString(): string {
+	const remote_buffer = new Uint8Array(256);
+	drogon.symbols.remote_resume(remote_buffer, remote_buffer.byteLength);
+
+	// Get remote_buffer as a zero-terminated string
+	return getZeroTerminatedString(remote_buffer);
+}
+
+// Simple HTTP server
+Deno.serve({ port: 8080 }, async (req) => {
+	const url = new URL(req.url);
+	if (url.pathname === "/") {
+		const remote_str = getRemoteString();
+		return new Response("Hello from Deno inside TinyKVM\n" + remote_str + "\n", {
+			headers: { "content-type": "text/plain; charset=utf-8" },
+		});
+	} else {
+		return new Response("Not Found\n", { status: 404 });
+	}
+});

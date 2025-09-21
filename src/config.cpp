@@ -340,7 +340,6 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_flag("--hugepages", config.hugepages)->group("Advanced");
 	app.add_flag("!--no-split-hugepages", config.split_hugepages)->group("Advanced");
 	app.add_flag("--transparent-hugepages", config.transparent_hugepages)->group("Advanced");
-	app.add_flag("!--no-relocate-fixed-mmap", config.relocate_fixed_mmap)->group("Advanced");
 	app.add_flag("!--no-ephemeral-keep-working-memory", config.ephemeral_keep_working_memory)->group("Advanced");
 
 	app.add_option("--remapping", "virt:size(mb)[:phys=0][:r?w?x?=rw]")
@@ -349,6 +348,22 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		->expected(CLI::detail::expected_max_vector_size)
 		->each([&](const std::string& remap) {
 			add_remapping(remap, config.vmem_remappings);
+		});
+
+	// Storage VM
+	app.add_flag("--storage", config.storage, "Enable a single non-ephemeral storage VM")->group("Storage VM");
+	app.add_flag("--storage-1-to-1", config.storage_1_to_1, "Each request VM gets its own storage VM (implies --storage)")->group("Storage VM");
+	app.add_option("--storage-args", [&](const auto& value) -> bool {
+		config.storage_arguments.insert(config.storage_arguments.end(), value.begin(), value.end());
+		return true;
+	}, "Storage VM argument (can be specified multiple times)")->group("Storage VM");
+	app.add_option("--storage-dylink-address-hint", config.storage_dylink_address_hint)->capture_default_str()->group("Storage VM");
+	app.add_option("--storage-remapping", "virt:size(mb)[:phys=0][:r?w?x?=rw]")
+		->group("Storage VM")
+		->delimiter(',')
+		->expected(CLI::detail::expected_max_vector_size)
+		->each([&](const std::string& remap) {
+			add_remapping(remap, config.storage_remappings);
 		});
 
 	CLI::Option* print_config = app.add_flag("--print-config", "Print config and exit without running program")->configurable(false);
