@@ -62,8 +62,8 @@ int main(int argc, char* argv[], char* envp[])
 
 		// Create a VirtualMachine instance
 		VirtualMachine vm(binary_file.view(), config);
-		if (config.storage && !config.storage_1_to_1 && !storage_vm.empty()) {
-			// Link the storage VM into the main VM
+		if (!storage_vm.empty()) {
+			// Link the (first) storage VM into the main VM
 			vm.machine().remote_connect(storage_vm[0]->machine());
 		}
 		// Initialize the VM by running through main()
