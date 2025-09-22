@@ -14,7 +14,7 @@ target/renderer:
 		--allow-all \
 		--v8-flags=-predictable,--max-old-space-size=256,--max-semi-space-size=256 \
 		-o target/renderer \
-		https://raw.githubusercontent.com/lrowe/react-server-render-benchmark/8866042d1944e98f8552f78458a553b7d3a94af1/renderer.mjs
+		../ext/react-server-render-benchmark/renderer.mjs
 target/deno_city.jpeg:
 	mkdir -p target
 	curl -L -o target/deno_city.jpeg https://artwork.deno.dev/images/artwork/deno_city.jpeg

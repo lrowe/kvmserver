@@ -13,15 +13,17 @@ target/helloworld-incoming.wasm: node_modules/.bin/jco helloworld.js incoming.js
 	mkdir -p target
 	cat helloworld.js incoming.js > target/helloworld-incoming.js
 	node_modules/.bin/jco componentize target/helloworld-incoming.js --wit wit/ --world-name component --out target/helloworld-incoming.wasm
-target/renderer.mjs:
+target/renderer.js:
 	mkdir -p target
-	curl -Lo target/renderer.mjs https://raw.githubusercontent.com/lrowe/react-server-render-benchmark/f754693c9cb6ad4f492039897d3444dec3103691/renderer.mjs
-target/renderer.wasm: node_modules/.bin/jco target/renderer.mjs
+	cat compat.js > target/renderer.js
+	sed '252498,$$d' < ../ext/react-server-render-benchmark/renderer.mjs >> target/renderer.js
+	echo 'addEventListener("fetch", (event) => event.respondWith(handler(event.request)));' >> target/renderer.js
+target/renderer.wasm: node_modules/.bin/jco target/renderer.js
 	mkdir -p target
-	node_modules/.bin/jco componentize target/renderer.mjs --wit wit/ --world-name component --out target/renderer.wasm
-target/renderer-incoming.wasm: node_modules/.bin/jco target/renderer.mjs incoming.js
+	node_modules/.bin/jco componentize target/renderer.js --wit wit/ --world-name component --out target/renderer.wasm
+target/renderer-incoming.wasm: node_modules/.bin/jco target/renderer.js incoming.js
 	mkdir -p target
-	cat target/renderer.mjs incoming.js > target/renderer-incoming.js
+	cat target/renderer.js incoming.js > target/renderer-incoming.js
 	node_modules/.bin/jco componentize target/renderer-incoming.js --wit wit/ --world-name component --out target/renderer-incoming.wasm
 check:
 	deno check

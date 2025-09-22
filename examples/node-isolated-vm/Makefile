@@ -4,7 +4,7 @@ node_modules:
 	npm install
 target/renderer.js:
 	mkdir -p target
-	curl -L https://raw.githubusercontent.com/lrowe/react-server-render-benchmark/8866042d1944e98f8552f78458a553b7d3a94af1/renderer.mjs | sed '252498,$$d' > target/renderer.js
+	sed '252498,$$d' < ../ext/react-server-render-benchmark/renderer.mjs > target/renderer.js
 check:
 	deno check
 clean:

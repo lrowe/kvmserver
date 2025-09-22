@@ -10,3 +10,6 @@
 [submodule "examples/wasmtime/ext/hello-wasi-http"]
 	path = examples/wasmtime/ext/hello-wasi-http
 	url = https://github.com/sunfishcode/hello-wasi-http.git
+[submodule "examples/ext/react-server-render-benchmark"]
+	path = examples/ext/react-server-render-benchmark
+	url = https://github.com/lrowe/react-server-render-benchmark.git

@@ -532,7 +532,7 @@ const groups = [
   ),
   bunForkBenches(
     "Bun process forking React page rendering",
-    "./bun/target/renderer.mjs",
+    "./ext/react-server-render-benchmark/renderer.mjs",
   ),
   isolateBenches(
     "Node isolated-vm helloworld",
