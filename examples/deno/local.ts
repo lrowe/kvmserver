@@ -12,7 +12,12 @@ function getZeroTerminatedString(buffer: Uint8Array, encoding = "utf8") {
 }
 function getRemoteString(): string {
   const remote_buffer = new Uint8Array(256);
-  drogon.symbols.remote_resume(remote_buffer, BigInt(remote_buffer.byteLength));
+  // Pass a number instead of a bigint to benefit from Fast API
+  // https://denonomicon.deno.dev/types/64-bit-integers
+  drogon.symbols.remote_resume(
+    remote_buffer,
+    remote_buffer.byteLength as unknown as bigint,
+  );
 
   // Get remote_buffer as a zero-terminated string
   return getZeroTerminatedString(remote_buffer);
