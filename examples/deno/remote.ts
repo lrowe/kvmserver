@@ -1,4 +1,4 @@
-import { connect } from "@db/redis";
+//import { connect } from "@db/redis";
 
 const drogon = Deno.dlopen(
   import.meta.dirname + "/libstorage.so",

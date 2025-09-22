@@ -36,7 +36,7 @@ int main(int argc, char* argv[], char* envp[])
 			}
 			else
 			{
-				printf("Storage VM will be created 1:1 for each request VM\n");
+				// Create one storage VM per request VM
 				storage_vm.resize(config.concurrency);
 				std::vector<std::jthread> storage_threads;
 				storage_threads.reserve(config.concurrency);
@@ -157,38 +157,56 @@ int main(int argc, char* argv[], char* envp[])
 			const bool is_storage_1_to_1 = (config.storage && config.storage_1_to_1);
 			threads.emplace_back([&vm, &storage_vm, i, is_storage_1_to_1]()
 			{
-				// Fork a new VM
-				VirtualMachine forked_vm(vm, i);
-				// Link the specific storage VM to the forked VM
-				if (is_storage_1_to_1 && i < storage_vm.size()) {
-					forked_vm.machine().remote_connect(storage_vm[i]->machine());
-				}
-				forked_vm.set_on_reset_callback([&vm, i]()
-				{
-					if (!vm.config().verbose)
-						return;
-					// Progressively print the reset counter
-					const uint64_t reset_counter = reset_counters.at(i).fetch_add(1);
-					if (i == 0) {
-						if (reset_counter % 64 == 0) {
-							std::string counters_str;
-							for (unsigned int j = 0; j < vm.config().concurrency; ++j) {
-								counters_str += std::to_string(j) + ": " + std::to_string(reset_counters[j].load()) + " ";
-							}
-							fprintf(stderr, "\rForked VMs have been reset: %s\n", counters_str.c_str());
-						} else {
-							// Print a dot in between resets
-							fprintf(stderr, ".");
-						}
+				// Create a new VM
+				std::unique_ptr<VirtualMachine> forked_vm;
+				try {
+					// Fork a new VM
+					forked_vm = std::make_unique<VirtualMachine>(vm, i);
+					// Link the specific storage VM to the forked VM
+					if (is_storage_1_to_1 && i < storage_vm.size()) {
+						forked_vm->machine().remote_connect(storage_vm[i]->machine());
 					}
-				});
-				if (getenv("DEBUG_FORK") != nullptr) {
-					forked_vm.open_debugger();
+					forked_vm->set_on_reset_callback([&vm, i]()
+					{
+						if (!vm.config().verbose)
+							return;
+						// Progressively print the reset counter
+						const uint64_t reset_counter = reset_counters.at(i).fetch_add(1);
+						if (i == 0) {
+							if (reset_counter % 64 == 0) {
+								std::string counters_str;
+								for (unsigned int j = 0; j < vm.config().concurrency; ++j) {
+									counters_str += std::to_string(j) + ": " + std::to_string(reset_counters[j].load()) + " ";
+								}
+								fprintf(stderr, "\rForked VMs have been reset: %s\n", counters_str.c_str());
+							} else {
+								// Print a dot in between resets
+								fprintf(stderr, ".");
+							}
+						}
+					});
+					if (getenv("DEBUG_FORK") != nullptr) {
+						forked_vm->open_debugger();
+					}
+				} catch (const tinykvm::MachineTimeoutException& me) {
+					fprintf(stderr, "*** Forked VM %u failed to initialize: timed out\n", i);
+					fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
+					return;
+				} catch (const tinykvm::MemoryException& me) {
+					fprintf(stderr, "*** Forked VM %u failed to initialize: memory error: %s Addr: 0x%#lX Size: %zu OOM: %d\n",
+						i, me.what(), me.addr(), me.size(), me.is_oom());
+					return;
+				} catch (const tinykvm::MachineException& me) {
+					fprintf(stderr, "*** Forked VM %u failed to initialize: %s Data: 0x%#lX\n", i, me.what(), me.data());
+					return;
+				} catch (const std::exception& e) {
+					fprintf(stderr, "*** Forked VM %u failed to initialize: %s\n", i, e.what());
+					return;
 				}
 				while (true) {
 					bool failure = false;
 					try {
-						forked_vm.resume_fork();
+						forked_vm->resume_fork();
 					} catch (const tinykvm::MachineTimeoutException& me) {
 						fprintf(stderr, "*** Forked VM %u timed out\n", i);
 						fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
@@ -203,13 +221,13 @@ int main(int argc, char* argv[], char* envp[])
 					}
 					if (failure) {
 						if (getenv("DEBUG") != nullptr) {
-							forked_vm.open_debugger();
+							forked_vm->open_debugger();
 						}
 					}
 					if (vm.is_ephemeral() || failure) {
 						printf("Forked VM %u finished. Resetting...\n", i);
 						try {
-							forked_vm.reset_to(vm);
+							forked_vm->reset_to(vm);
 						} catch (const std::exception& e) {
 							fprintf(stderr, "*** Forked VM %u failed to reset: %s\n", i, e.what());
 						}
