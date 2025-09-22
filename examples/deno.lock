@@ -1,23 +1,46 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@db/redis@*": "0.40.0",
+    "jsr:@db/redis@0.40": "0.40.0",
     "jsr:@std/assert@1": "1.0.13",
+    "jsr:@std/async@1": "1.0.14",
+    "jsr:@std/bytes@1": "1.0.6",
+    "jsr:@std/bytes@^1.0.2-rc.3": "1.0.6",
     "jsr:@std/bytes@^1.0.5": "1.0.6",
     "jsr:@std/cli@*": "1.0.22",
+    "jsr:@std/collections@1": "1.1.3",
     "jsr:@std/internal@^1.0.6": "1.0.7",
+    "jsr:@std/io@0.224.5": "0.224.5",
+    "jsr:@std/random@0.1.0": "0.1.0",
     "jsr:@std/streams@1": "1.0.9",
     "npm:@imagemagick/magick-wasm@^0.0.36": "0.0.36",
     "npm:@types/node@*": "22.15.15",
     "npm:bun-types@*": "1.2.21_@types+react@19.1.12",
+    "npm:cluster-key-slot@1.1.0": "1.1.0",
     "npm:echarts@*": "5.6.0",
     "npm:echarts@^5.6.0": "5.6.0"
   },
   "jsr": {
+    "@db/redis@0.40.0": {
+      "integrity": "98bef146ad2d1262c0a5388c32e9d62e83ada410c9cc49cee3868085037e930b",
+      "dependencies": [
+        "jsr:@std/async",
+        "jsr:@std/bytes@1",
+        "jsr:@std/collections",
+        "jsr:@std/io",
+        "jsr:@std/random",
+        "npm:cluster-key-slot"
+      ]
+    },
     "@std/assert@1.0.13": {
       "integrity": "ae0d31e41919b12c656c742b22522c32fb26ed0cba32975cb0de2a273cb68b29",
       "dependencies": [
         "jsr:@std/internal"
       ]
+    },
+    "@std/async@1.0.14": {
+      "integrity": "62e954a418652c704d37563a3e54a37d4cf0268a9dcaeac1660cc652880b5326"
     },
     "@std/bytes@1.0.6": {
       "integrity": "f6ac6adbd8ccd99314045f5703e23af0a68d7f7e58364b47d2c7f408aeb5820a"
@@ -25,13 +48,25 @@
     "@std/cli@1.0.22": {
       "integrity": "50d1e4f87887cb8a8afa29b88505ab5081188f5cad3985460c3b471fa49ff21a"
     },
+    "@std/collections@1.1.3": {
+      "integrity": "bf8b0818886df6a32b64c7d3b037a425111f28278d69fd0995aeb62777c986b0"
+    },
     "@std/internal@1.0.7": {
       "integrity": "39eeb5265190a7bc5d5591c9ff019490bd1f2c3907c044a11b0d545796158a0f"
+    },
+    "@std/io@0.224.5": {
+      "integrity": "cb84fe655d1273fca94efcff411465027a8b0b4225203f19d6ee98d9c8920a2d",
+      "dependencies": [
+        "jsr:@std/bytes@^1.0.2-rc.3"
+      ]
+    },
+    "@std/random@0.1.0": {
+      "integrity": "70a006be0ffb77d036bab54aa8ae6bd0119ba77ace0f2f56f63273d4262a5667"
     },
     "@std/streams@1.0.9": {
       "integrity": "a9d26b1988cdd7aa7b1f4b51e1c36c1557f3f252880fa6cc5b9f37078b1a5035",
       "dependencies": [
-        "jsr:@std/bytes"
+        "jsr:@std/bytes@^1.0.5"
       ]
     }
   },
@@ -64,6 +99,9 @@
         "@types/react"
       ]
     },
+    "cluster-key-slot@1.1.0": {
+      "integrity": "sha512-2Nii8p3RwAPiFwsnZvukotvow2rIHM+yQ6ZcBXGHdniadkYGZYiGmkHJIbZPIV9nfv7m/U1IPMVVcAhoWFeklw=="
+    },
     "csstype@3.1.3": {
       "integrity": "sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw=="
     },
@@ -92,6 +130,7 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@db/redis@0.40",
       "jsr:@std/assert@1",
       "jsr:@std/cli@*",
       "jsr:@std/streams@1",
