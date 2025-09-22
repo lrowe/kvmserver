@@ -1,6 +1,6 @@
 console.log("Hello from Deno inside TinyKVM");
 const drogon = Deno.dlopen(
-  import.meta.resolve("liblocal.so"),
+  import.meta.dirname + "/liblocal.so",
   {
     remote_resume: { parameters: ["buffer", "usize"], result: "void" },
   },

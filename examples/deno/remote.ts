@@ -1,7 +1,7 @@
 import { connect } from "@db/redis";
 
 const drogon = Deno.dlopen(
-  import.meta.resolve("./libstorage.so"),
+  import.meta.dirname + "/libstorage.so",
   {
     wait_for_storage_task_paused: { parameters: [], result: "pointer" },
   },
