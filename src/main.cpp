@@ -15,29 +15,56 @@ int main(int argc, char* argv[], char* envp[])
 		MmapFile binary_file(config.filename);
 
 		std::unique_ptr<MmapFile> storage_binary_file;
-		std::unique_ptr<VirtualMachine> storage_vm;
+		std::vector<std::unique_ptr<VirtualMachine>> storage_vm;
 		std::mutex storage_vm_mutex;
 		if (config.storage) {
 			// Load the storage VM binary
 			storage_binary_file = std::make_unique<MmapFile>(config.filename);
-			// Create the storage VM
-			storage_vm = std::make_unique<VirtualMachine>(storage_binary_file->view(), config, true);
-			// Make sure only one thread at a time can access the storage VM
-			storage_vm->machine().cpu().remote_serializer = &storage_vm_mutex;
-			auto init = storage_vm->initialize(nullptr, false);
-			if (!storage_vm->is_waiting_for_requests()) {
-				fprintf(stderr, "The storage VM did not wait for requests\n");
-				return 1;
+			if (config.storage_1_to_1 == false)
+			{
+				// Create the storage VM
+				auto vm_instance = std::make_unique<VirtualMachine>(storage_binary_file->view(), config, true);
+				// Make sure only one thread at a time can access the storage VM
+				vm_instance->machine().cpu().remote_serializer = &storage_vm_mutex;
+				auto init = vm_instance->initialize(nullptr, false);
+				if (!vm_instance->is_waiting_for_requests()) {
+					fprintf(stderr, "The storage VM did not wait for requests\n");
+					return 1;
+				}
+				printf("Storage VM initialized. init=%lums\n", init.initialization_time.count());
+				storage_vm.push_back(std::move(vm_instance));
+			}
+			else
+			{
+				printf("Storage VM will be created 1:1 for each request VM\n");
+				storage_vm.resize(config.concurrency);
+				std::vector<std::jthread> storage_threads;
+				storage_threads.reserve(config.concurrency);
+				for (unsigned int i = 0; i < config.concurrency; ++i) {
+					storage_threads.emplace_back([&storage_vm, &storage_binary_file, &config, i]() {
+						auto vm_instance = std::make_unique<VirtualMachine>(storage_binary_file->view(), config, true);
+						storage_vm[i] = std::move(vm_instance);
+						// No need for a mutex, each VM has its own storage VM
+						auto init = storage_vm[i]->initialize(nullptr, false);
+						printf("Storage VM %u initialized. init=%lums\n", i, init.initialization_time.count());
+						if (!storage_vm[i]->is_waiting_for_requests()) {
+							fprintf(stderr, "The storage VM %u did not wait for requests\n", i);
+							std::exit(1);
+						}
+					});
+				}
+				for (auto& t : storage_threads) {
+					t.join();
+				}
 			}
 			storage_binary_file->dontneed(); // Lazily drop pages from the file
-			printf("Storage VM initialized. init=%lums\n", init.initialization_time.count());
 		}
 
 		// Create a VirtualMachine instance
 		VirtualMachine vm(binary_file.view(), config);
-		if (storage_vm) {
+		if (config.storage && !config.storage_1_to_1 && !storage_vm.empty()) {
 			// Link the storage VM into the main VM
-			vm.machine().remote_connect(storage_vm->machine());
+			vm.machine().remote_connect(storage_vm[0]->machine());
 		}
 		// Initialize the VM by running through main()
 		// and then do a warmup, if required
@@ -127,10 +154,15 @@ int main(int argc, char* argv[], char* envp[])
 
 		for (unsigned int i = 0; i < config.concurrency; ++i)
 		{
-			threads.emplace_back([&vm, i]()
+			const bool is_storage_1_to_1 = (config.storage && config.storage_1_to_1);
+			threads.emplace_back([&vm, &storage_vm, i, is_storage_1_to_1]()
 			{
 				// Fork a new VM
 				VirtualMachine forked_vm(vm, i);
+				// Link the specific storage VM to the forked VM
+				if (is_storage_1_to_1 && i < storage_vm.size()) {
+					forked_vm.machine().remote_connect(storage_vm[i]->machine());
+				}
 				forked_vm.set_on_reset_callback([&vm, i]()
 				{
 					if (!vm.config().verbose)
@@ -193,12 +225,12 @@ int main(int argc, char* argv[], char* envp[])
 
 	} catch (const tinykvm::MachineTimeoutException& me) {
 		fprintf(stderr, "Machine timed out\n");
-		fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
+		fprintf(stderr, "Error: %s Data: 0x%lX\n", me.what(), me.data());
 		fprintf(stderr, "The server has stopped.\n");
 		return 1;
 	} catch (const tinykvm::MachineException& me) {
 		fprintf(stderr, "Machine not initialized properly\n");
-		fprintf(stderr, "Error: %s Data: 0x%#lX\n", me.what(), me.data());
+		fprintf(stderr, "Error: %s Data: 0x%lX\n", me.what(), me.data());
 		fprintf(stderr, "The server has stopped.\n");
 		return 1;
 	} catch (const std::exception& e) {
