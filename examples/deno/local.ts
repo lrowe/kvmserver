@@ -1,6 +1,6 @@
 console.log("Hello from Deno inside TinyKVM");
 const drogon = Deno.dlopen(
-  import.meta.dirname + "/liblocal.so",
+  import.meta.dirname + "/libkvmserver.so",
   {
     remote_resume: { parameters: ["buffer", "usize"], result: "void" },
   },
@@ -16,7 +16,7 @@ function getRemoteString(): string {
   // https://denonomicon.deno.dev/types/64-bit-integers
   drogon.symbols.remote_resume(
     remote_buffer,
-    remote_buffer.byteLength as unknown as bigint,
+    BigInt(remote_buffer.byteLength),
   );
 
   // Get remote_buffer as a zero-terminated string
