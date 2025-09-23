@@ -23,7 +23,7 @@ struct Configuration
 	uint32_t limit_req_mem = 128; /* Megabytes to keep after request */
 	uint32_t shared_memory = 0; /* Megabytes */
 	uint64_t dylink_address_hint = 2; /* Image base address hint */
-	uint64_t heap_address_hint = 0; /* Address hint for the heap */
+	uint64_t heap_address_hint = 256; /* Address hint for the heap */
 	uint64_t storage_dylink_address_hint = 0x2000200000; /* Image base address hint for storage VMs */
 	uint64_t hugepage_arena_size = 0; /* Megabytes */
 	uint64_t hugepage_requests_arena = 0; /* Megabytes */
