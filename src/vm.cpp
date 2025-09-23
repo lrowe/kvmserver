@@ -166,7 +166,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 		.master_direct_memory_writes = true,
 		.split_hugepages = false,
 		.executable_heap = config.executable_heap,
-		.mmap_backed_files = storage ? false : config.mmap_backed_files,
+		.mmap_backed_files = config.mmap_backed_files,
 		.hugepages_arena_size = config.hugepage_arena_size,
 	}),
 	m_config(config),
