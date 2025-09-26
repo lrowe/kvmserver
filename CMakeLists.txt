@@ -5,6 +5,7 @@ option(STATIC_BUILD "Build static executable" OFF)
 
 add_subdirectory(ext/tinykvm tinykvm EXCLUDE_FROM_ALL)
 add_subdirectory(ext/CLI11)
+add_subdirectory(src/api)
 
 add_executable(kvmserver
 	src/main.cpp
@@ -17,6 +18,7 @@ target_compile_features(kvmserver PUBLIC cxx_std_20)
 target_link_libraries(kvmserver
 	tinykvm
 	CLI11::CLI11
+	_binary_libkvmserverguest_so
 )
 
 if (SANITIZE)

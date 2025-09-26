@@ -1,7 +1,6 @@
 //import { connect } from "@db/redis";
 
-const drogon = Deno.dlopen(
-  import.meta.dirname + "/libkvmserver.so",
+const kvmserverguest = Deno.dlopen("libkvmserverguest.so",
   {
     storage_wait_paused: { parameters: [], result: "pointer" },
   },
@@ -11,7 +10,7 @@ console.log("Hello from Deno Storage inside TinyKVM");
 //const redisClient = await connect({ hostname: "127.0.0.1", port: 6379 });
 while (true) {
   // Wait for a UInt8Array buffer from C
-  const bufptr = drogon.symbols.storage_wait_paused();
+  const bufptr = kvmserverguest.symbols.storage_wait_paused();
   if (bufptr === null) {
     throw new Error("bufptr is null");
   }

@@ -276,6 +276,22 @@ static void ensure_path(
 	}
 }
 
+static void fake_path(
+	std::filesystem::path path,
+	std::string_view content,
+	std::map<std::filesystem::path, Configuration::VirtualPath, Configuration::ComparePathSegments>& allowed_paths
+) {
+	// Create a fake tempfile for /proc/self/maps
+	std::filesystem::path dst = std::tmpnam(nullptr);
+	FILE *f = fopen(dst.c_str(), "w");
+	if (f == nullptr) {
+		throw CLI::ValidationError("fopen: Unable to create temporary file", "");
+	}
+	fwrite(content.data(), 1, content.size(), f);
+	fclose(f);
+	ensure_path(path, dst, allowed_paths, true, false, false);
+}
+
 Configuration Configuration::FromArgs(int argc, char* argv[])
 {
 	Configuration config;
@@ -384,17 +400,18 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		ensure_path("/dev/urandom", "/dev/urandom", config.allowed_paths, true, false, true);
 		ensure_path("/dev/null", "/dev/null", config.allowed_paths, true, true, true);
 		ensure_path("/dev/zero", "/dev/zero", config.allowed_paths, true, true, true);
+
 		// Create a fake tempfile for /proc/self/maps
-		std::string fake_maps_filepath = std::tmpnam(nullptr);
-		const std::string fake_maps = // XXX: Leaking real filename?
-			"000000000000-ffffffffffff r--p 00000000 103:02 48895346                  " + config.filename + "\n";
-		FILE *f = fopen(fake_maps_filepath.c_str(), "w");
-		if (f == nullptr) {
-			throw CLI::ValidationError("fopen: Unable to create temporary file", "");
-		}
-		fwrite(fake_maps.data(), 1, fake_maps.size(), f);
-		fclose(f);
-		ensure_path("/proc/self/maps", fake_maps_filepath, config.allowed_paths, true, false, true);
+		fake_path("/proc/self/maps",
+			"000000000000-ffffffffffff r--p 00000000 103:02 48895346                  " + config.filename + "\n",
+			config.allowed_paths);
+
+		// Create a fake tempfile for /lib/libkvmserverguest.so
+		extern const char _binary_libkvmserverguest_so_start, _binary_libkvmserverguest_so_end;
+		std::string_view libkvmserverguest_so(
+			&_binary_libkvmserverguest_so_start,
+			&_binary_libkvmserverguest_so_end - &_binary_libkvmserverguest_so_start);
+		fake_path("/lib/libkvmserverguest.so", libkvmserverguest_so, config.allowed_paths);
 
 		for (const std::string& triple : volume) {
 			auto parts = split(triple, ':');
