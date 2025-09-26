@@ -7,7 +7,7 @@
 # docker build -t ghcr.io/libriscv/kvmserver:test examples
 # KVM_GID=$(getent group kvm | cut -d: -f3) docker run --rm --mount type=image,src=ghcr.io/libriscv/kvmserver:bin,dst=/mnt --device /dev/kvm --group-add $KVM_GID -it ghcr.io/libriscv/kvmserver:test
 
-FROM rust:1.89-trixie as build_wasmtime
+FROM rust:1.89-trixie AS build_wasmtime
 WORKDIR /wasmtime
 RUN set -e; \
     git clone --depth 2 --branch v31.0.0-instance-reuse-e985d36 https://github.com/lrowe/wasmtime.git .; \
