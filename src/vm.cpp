@@ -185,6 +185,17 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 					const uint64_t src = cpu.registers().rdi;
 					const uint64_t len = cpu.registers().rsi;
 
+					if (vm.config().storage_1_to_1)  {
+						tinykvm::Machine& m = cpu.machine().remote();
+						auto& regs = m.registers();
+						m.copy_to_guest(regs.rdi, &src, sizeof(src));
+						regs.rax = len;
+						m.set_registers(regs);
+
+						m.ipre_permanent_remote_resume_now();
+						return;
+					}
+
 					vm.machine().ipre_remote_resume_now(false,
 					[src, len] (tinykvm::Machine& m) {
 						m.copy_to_guest(m.registers().rdi, &src, sizeof(src));
@@ -287,7 +298,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 		return symlink;
 	});
 }
-VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
+VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid, bool is_storage)
 	: m_machine(other.m_machine, tinykvm::MachineOptions{
 		.max_mem = other.config().max_main_memory,
 		.max_cow_mem = other.config().max_req_mem,
@@ -299,7 +310,7 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid)
 	  m_binary_type(other.m_binary_type),
 	  m_reqid(reqid),
 	  m_ephemeral(other.m_ephemeral),
-	  m_is_storage(false),
+	  m_is_storage(is_storage),
 	  m_master_instance(&other),
 	  m_poll_method(other.m_poll_method)
 {
