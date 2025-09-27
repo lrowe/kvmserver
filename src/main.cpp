@@ -37,7 +37,7 @@ int main(int argc, char* argv[], char* envp[])
 		// Create a VirtualMachine instance
 		VirtualMachine vm(binary_file.view(), config);
 		if (storage_vm != nullptr) {
-			// Link the (first) storage VM into the main VM
+			// Link the main storage VM to the main VM
 			if (config.storage_1_to_1) {
 				storage_vm->machine().remote_connect(vm.machine(), true);
 			} else {
@@ -57,13 +57,13 @@ int main(int argc, char* argv[], char* envp[])
 		}
 		binary_file.dontneed(); // Lazily drop pages from the file
 
-		if (config.storage_1_to_1) {
+		if (config.storage_1_to_1 && !just_one_vm) {
 			// Prepare storage VM for forking
 			if (storage_vm == nullptr) {
 				fprintf(stderr, "Configuration error: --storage-1-to-1 requires --storage\n");
 				return 1;
 			}
-			storage_vm->machine().prepare_copy_on_write(0UL);
+			storage_vm->machine().prepare_copy_on_write();
 			// Create one storage VM per request VM
 			storage_forks.resize(config.concurrency);
 		}

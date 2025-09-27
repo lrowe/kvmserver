@@ -610,7 +610,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			machine().set_registers(regs);
 
 			// Make forkable (with *NO* working memory)
-			machine().prepare_copy_on_write(0UL);
+			machine().prepare_copy_on_write();
 		} else if (is_storage()) {
 			// Skip over OUT instruction
 			auto& regs = machine().registers();
