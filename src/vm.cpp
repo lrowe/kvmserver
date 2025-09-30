@@ -185,7 +185,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 					const uint64_t src = cpu.registers().rdi;
 					const uint64_t len = cpu.registers().rsi;
 
-					if (vm.config().storage_1_to_1)  {
+					if (false && vm.config().storage_1_to_1)  {
 						tinykvm::Machine& m = cpu.machine().remote();
 						auto& regs = m.registers();
 						m.copy_to_guest(regs.rdi, &src, sizeof(src));
@@ -198,7 +198,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 
 					vm.machine().ipre_remote_resume_now(false,
 					[src, len] (tinykvm::Machine& m) {
-						m.copy_to_guest(m.registers().rdi, &src, sizeof(src));
+						m.remote().copy_to_guest(m.registers().rdi, &src, sizeof(src));
 						m.registers().rax = len;
 					});
 					return;
