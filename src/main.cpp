@@ -38,7 +38,11 @@ int main(int argc, char* argv[], char* envp[])
 		VirtualMachine vm(binary_file.view(), config);
 		if (storage_vm != nullptr) {
 			// Link the main storage VM to the main VM
-			vm.machine().remote_connect(storage_vm->machine());
+			if (!config.storage_1_to_1) {
+				vm.machine().remote_connect(storage_vm->machine());
+			} else {
+				vm.machine().permanent_remote_connect(storage_vm->machine());
+			}
 		}
 		// Initialize the VM by running through main()
 		// and then do a warmup, if required
@@ -150,7 +154,8 @@ int main(int argc, char* argv[], char* envp[])
 					// Link the specific storage VM to the forked VM
 					if (is_storage_1_to_1 && i < storage_forks.size()) {
 						storage_forks[i] = std::make_unique<VirtualMachine>(*storage_vm, i, true);
-						forked_vm->machine().remote_connect(storage_forks[i]->machine());
+						//forked_vm->machine().remote_connect(storage_forks[i]->machine());forked_vm->machine().remote_connect(storage_forks[i]->machine());
+						storage_forks[i]->machine().permanent_remote_connect(forked_vm->machine());
 					}
 					forked_vm->set_on_reset_callback([&vm, i]()
 					{
