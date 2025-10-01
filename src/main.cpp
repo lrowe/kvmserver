@@ -12,7 +12,7 @@ int main(int argc, char* argv[], char* envp[])
 		VirtualMachine::init_kvm();
 
 		// Read the binary file
-		MmapFile binary_file(config.filename);
+		MmapFile binary_file(config.main_filename);
 
 		std::unique_ptr<MmapFile> storage_binary_file;
 		std::unique_ptr<VirtualMachine> storage_vm;
@@ -20,7 +20,7 @@ int main(int argc, char* argv[], char* envp[])
 		std::mutex storage_vm_mutex;
 		if (config.storage) {
 			// Load the storage VM binary
-			storage_binary_file = std::make_unique<MmapFile>(config.filename);
+			storage_binary_file = std::make_unique<MmapFile>(config.main_filename);
 			// Create the storage VM
 			storage_vm = std::make_unique<VirtualMachine>(storage_binary_file->view(), config, true);
 			// Make sure only one thread at a time can access the storage VM
@@ -93,7 +93,7 @@ int main(int argc, char* argv[], char* envp[])
 			method = "undefined";
 		}
 		printf("Program '%s' loaded. %s vm=%u%s huge=%u/%u init=%lums%s%s\n",
-			config.filename.c_str(),
+			config.main_filename.c_str(),
 			method.c_str(),
 			config.concurrency,
 			(config.ephemeral ? (config.ephemeral_keep_working_memory ? " ephemeral-kwm" : " ephemeral") : ""),

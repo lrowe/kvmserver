@@ -307,7 +307,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 
 	app.set_config("-c,--config", "kvmserver.toml", "Read a toml file");
 
-	app.add_option("program", config.filename, "Program")->required();
+	app.add_option("program", config.main_filename, "Program")->required();
 	app.add_option("args", config.main_arguments, "Program arguments");
 	app.add_option("--cwd", config.current_working_directory, "Set the guests working directory")
 		->default_val(std::filesystem::current_path());
@@ -386,7 +386,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	CLI::Option* print_config = app.add_flag("--print-config", "Print config and exit without running program")->configurable(false);
 
 	app.callback([&]() {
-		config.filename = lookup_program(config.filename);
+		config.main_filename = lookup_program(config.main_filename);
 
 		if (config.concurrency == 0) {
 			config.concurrency = std::thread::hardware_concurrency();
@@ -404,7 +404,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 
 		// Create a fake tempfile for /proc/self/maps
 		fake_path("/proc/self/maps",
-			"000000000000-ffffffffffff r--p 00000000 103:02 48895346                  " + config.filename + "\n",
+			"000000000000-ffffffffffff r--p 00000000 103:02 48895346                  " + config.main_filename + "\n",
 			config.allowed_paths);
 
 		// Create a fake tempfile for /lib/libkvmserverguest.so
@@ -454,8 +454,8 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		}
 		// Rewrite the path to the real path of the executable
 		// TODO: reverse map real to virtual.
-		ensure_path("/proc/self/exe", config.filename, config.allowed_paths, false, false, true);
-		ensure_path(config.filename, config.filename, config.allowed_paths, true, false, false);
+		ensure_path("/proc/self/exe", config.main_filename, config.allowed_paths, false, false, true);
+		ensure_path(config.main_filename, config.main_filename, config.allowed_paths, true, false, false);
 		if (config.verbose) {
 			std::cerr<<"TinyKVM: allowed_paths = {\n";
 			for (auto& [k, v] : config.allowed_paths) {

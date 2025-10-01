@@ -30,7 +30,7 @@ struct VirtualMachine
 	auto& machine() { return m_machine; }
 	const auto& machine() const { return m_machine; }
 
-	const auto& name() const noexcept { return m_config.filename; }
+	const auto& name() const noexcept { return m_config.main_filename; }
 	const auto& config() const { return m_config; }
 	BinaryType binary_type() const noexcept { return m_binary_type; }
 	std::string binary_type_string() const noexcept;
