@@ -369,6 +369,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	// Storage VM
 	app.add_flag("--storage", config.storage, "Enable a single non-ephemeral storage VM")->group("Storage VM");
 	app.add_flag("--storage-1-to-1", config.storage_1_to_1, "Each request VM gets its own storage VM (implies --storage)")->group("Storage VM");
+	app.add_flag("--storage-ipre-permanent", config.storage_ipre_permanent, "Storage VM uses permanent IPRE resume images (implies --storage)")->group("Storage VM");
 	app.add_option("--storage-args", [&](const auto& value) -> bool {
 		config.storage_arguments.insert(config.storage_arguments.end(), value.begin(), value.end());
 		return true;

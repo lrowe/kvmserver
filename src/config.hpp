@@ -29,6 +29,7 @@ struct Configuration
 	uint64_t hugepage_requests_arena = 0; /* Megabytes */
 	bool     storage = false; /* Enable a single non-ephemeral storage VM */
 	bool     storage_1_to_1 = false; /* Each request VM gets its own storage VM */
+	bool     storage_ipre_permanent = false; /* Permanent IPRE resume */
 	bool     executable_heap = true;
 	bool     mmap_backed_files = true; /* Use mmap for files */
 	bool     hugepages    = false;
