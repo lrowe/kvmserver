@@ -20,7 +20,7 @@ int main(int argc, char* argv[], char* envp[])
 		std::mutex storage_vm_mutex;
 		if (config.storage) {
 			// Load the storage VM binary
-			storage_binary_file = std::make_unique<MmapFile>(config.main_filename);
+			storage_binary_file = std::make_unique<MmapFile>(config.storage_filename);
 			// Create the storage VM
 			storage_vm = std::make_unique<VirtualMachine>(storage_binary_file->view(), config, true);
 			// Make sure only one thread at a time can access the storage VM

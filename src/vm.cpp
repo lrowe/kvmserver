@@ -436,7 +436,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			// The real program path (which must be guest-readable)
 			/// XXX: TODO: Use /proc/self/exe instead of this?
 			args.push_back("/lib64/ld-linux-x86-64.so.2");
-			args.push_back(config().main_filename);
+			args.push_back((m_is_storage) ? config().storage_filename : config().main_filename);
 		} else {
 			// Fake filename for the program using the name of the tenant
 			args.push_back(name());
@@ -737,7 +737,7 @@ void VirtualMachine::init_kvm()
 void VirtualMachine::open_debugger()
 {
 	const uint16_t port = 2159;
-	tinykvm::RSP server(this->config().main_filename, machine(), port);
+	tinykvm::RSP server((m_is_storage) ? config().storage_filename : config().main_filename, machine(), port);
 	while (true) {
 		fprintf(stderr, "Waiting 60s for remote GDB on port %u...\n", port);
 		auto client = server.accept(60);

@@ -295,8 +295,6 @@ static void fake_path(
 Configuration Configuration::FromArgs(int argc, char* argv[])
 {
 	Configuration config;
-	CLI::App app{"kvmserver"};
-
 	std::vector<std::string> allow_read;
 	std::vector<std::string> allow_write;
 	std::vector<std::string> volume;
@@ -305,10 +303,10 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	std::vector<std::string> allow_connect;
 	std::vector<std::string> allow_listen;
 
+	CLI::App app{"kvmserver"};
 	app.set_config("-c,--config", "kvmserver.toml", "Read a toml file");
+	app.set_help_all_flag("--help-all", "Expand all help");
 
-	app.add_option("program", config.main_filename, "Program")->required();
-	app.add_option("args", config.main_arguments, "Program arguments");
 	app.add_option("--cwd", config.current_working_directory, "Set the guests working directory")
 		->default_val(std::filesystem::current_path());
 	// TODO: This does not allow env=[] in config file.
@@ -347,7 +345,6 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_option("--max-request-memory", config.max_req_mem)->capture_default_str()->group("Advanced");
 	app.add_option("--limit-request-memory", config.limit_req_mem)->capture_default_str()->group("Advanced");
 	app.add_option("--shared-memory", config.shared_memory)->capture_default_str()->group("Advanced");
-	app.add_option("--dylink-address-hint", config.dylink_address_hint)->capture_default_str()->group("Advanced");
 	app.add_option("--heap-address-hint", config.heap_address_hint)->capture_default_str()->group("Advanced");
 	app.add_option("--hugepage-arena-size", config.hugepage_arena_size)->capture_default_str()->group("Advanced");
 	app.add_option("--hugepage-requests-arena", config.hugepage_requests_arena)->capture_default_str()->group("Advanced");
@@ -358,36 +355,65 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	app.add_flag("--transparent-hugepages", config.transparent_hugepages)->group("Advanced");
 	app.add_flag("!--no-ephemeral-keep-working-memory", config.ephemeral_keep_working_memory)->group("Advanced");
 
-	app.add_option("--remapping", "virt:size(mb)[:phys=0][:r?w?x?=rw]")
+	// This allows ++ to be used as an escape from subcommand positionals.
+	app.add_subcommand("++", "")->silent()->group("")->fallthrough();
+
+	// Main VM
+	auto &run = *app.add_subcommand("run", "Main VM");
+	run.configurable();
+	run.positionals_at_end();
+	run.validate_positionals();
+	run.add_option("program", config.main_filename, "Program")->required();
+	run.add_option("args", config.main_arguments, "Program arguments")->check(!CLI::IsMember({"++"}));
+	run.add_option("--dylink-address-hint", config.dylink_address_hint)->capture_default_str()->group("Advanced");
+	run.add_option("--remapping", "virt:size(mb)[:phys=0][:r?w?x?=rw]")
 		->group("Advanced")
 		->delimiter(',')
 		->expected(CLI::detail::expected_max_vector_size)
 		->each([&](const std::string& remap) {
 			add_remapping(remap, config.vmem_remappings);
 		});
+	run.callback([&]() {
+		if (run.count() > 1) {
+			throw CLI::ValidationError("run subcommand may only be called once");
+		}
+		config.main_filename = lookup_program(config.main_filename);
+	});
 
 	// Storage VM
-	app.add_flag("--storage", config.storage, "Enable a single non-ephemeral storage VM")->group("Storage VM");
-	app.add_flag("--storage-1-to-1", config.storage_1_to_1, "Each request VM gets its own storage VM (implies --storage)")->group("Storage VM");
-	app.add_flag("--storage-ipre-permanent", config.storage_ipre_permanent, "Storage VM uses permanent IPRE resume images (implies --storage)")->group("Storage VM");
-	app.add_option("--storage-args", [&](const auto& value) -> bool {
-		config.storage_arguments.insert(config.storage_arguments.end(), value.begin(), value.end());
-		return true;
-	}, "Storage VM argument (can be specified multiple times)")->group("Storage VM");
-	app.add_option("--storage-dylink-address-hint", config.storage_dylink_address_hint)->capture_default_str()->group("Storage VM");
-	app.add_option("--storage-remapping", "virt:size(mb)[:phys=0][:r?w?x?=rw]")
-		->group("Storage VM")
+	auto &storage = *app.add_subcommand("storage", "Storage VM");
+	storage.needs(&run);
+	storage.configurable();
+	storage.positionals_at_end();
+	storage.validate_positionals();
+	storage.add_option("program", config.storage_filename, "Storage program")->required();
+	storage.add_option("args", config.storage_arguments, "Storage arguments")->check(!CLI::IsMember({"++"}));
+	storage.add_flag("--1-to-1", config.storage_1_to_1, "Each request VM gets its own storage VM");
+	storage.add_flag("--ipre-permanent", config.storage_ipre_permanent, "Storage VM uses permanent IPRE resume images")->group("Advanced");
+	storage.add_option("--dylink-address-hint", config.storage_dylink_address_hint)->capture_default_str()->group("Advanced");
+	storage.add_option("--remapping", "virt:size(mb)[:phys=0][:r?w?x?=rw]")
+		->group("Advanced")
 		->delimiter(',')
 		->expected(CLI::detail::expected_max_vector_size)
 		->each([&](const std::string& remap) {
 			add_remapping(remap, config.storage_remappings);
 		});
+	storage.final_callback([&]() {
+		if (storage.count() > 1) {
+			throw CLI::ValidationError("storage subcommand may only be used once");
+		}
+		config.storage = true;
+		config.storage_filename = lookup_program(config.storage_filename);
+	});
 
 	CLI::Option* print_config = app.add_flag("--print-config", "Print config and exit without running program")->configurable(false);
 
 	app.callback([&]() {
-		config.main_filename = lookup_program(config.main_filename);
-
+		if (app.get_subcommands([&](const CLI::App* sub) {
+			return sub->get_name() != "++" && sub->count() > 0;
+		}).size() == 0) {
+			throw CLI::ValidationError("A subcommand is required");
+		}
 		if (config.concurrency == 0) {
 			config.concurrency = std::thread::hardware_concurrency();
 		}

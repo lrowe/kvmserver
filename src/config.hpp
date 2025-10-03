@@ -9,6 +9,7 @@
 struct Configuration
 {
 	std::string main_filename;
+	std::string storage_filename;
 	uint16_t concurrency = 1; /* Request VMs */
 	uint16_t warmup_connect_requests = 0; /* Warmup requests, individual connections */
 	uint16_t warmup_intra_connect_requests = 1; /* Send N requests while connected */
@@ -45,7 +46,7 @@ struct Configuration
 
 	std::vector<std::string> environ;
 	std::vector<std::string> main_arguments;
-	std::vector<std::string> storage_arguments = {"run", "--allow-all", "remote.ts"};
+	std::vector<std::string> storage_arguments;
 
 	std::vector<tinykvm::VirtualRemapping> vmem_remappings;
 	std::vector<tinykvm::VirtualRemapping> storage_remappings;
