@@ -1,6 +1,7 @@
 __pycache__/
 .build/
 .cache/
+.deno_cache/
 .gdb_history
 .ruff_cache/
 .venv/
