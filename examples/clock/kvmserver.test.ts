@@ -5,7 +5,7 @@ Deno.test(
   "clock test",
   async () => {
     const command = new Deno.Command(KVMSERVER, {
-      args: ["--allow-read=/lib", "./target/test"],
+      args: ["--allow-read=/lib", "run", "./target/test"],
       cwd: import.meta.dirname,
     });
     const result = await command.output();

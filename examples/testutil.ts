@@ -11,9 +11,15 @@ function quote(s: string) {
 export const KVMSERVER = Deno.env.get("KVMSERVER") ??
   new URL(import.meta.resolve("../.build/kvmserver")).pathname;
 
+type KvmServerSubCommandOptions = {
+  program: string;
+  args?: string[];
+  extra?: string[];
+};
 type KvmServerCommandOptions = {
   program: string;
   args?: string[];
+  storage?: KvmServerSubCommandOptions;
   cwd?: Deno.CommandOptions["cwd"];
   env?: Deno.CommandOptions["env"];
   ephemeral?: boolean;
@@ -21,6 +27,7 @@ type KvmServerCommandOptions = {
   warmup?: number;
   threads?: number;
   extra?: string[];
+  runExtra?: string[];
 };
 
 export function kvmServerCommand(
@@ -37,7 +44,17 @@ export function kvmServerCommand(
     ...options.allowAll ? ["--allow-all"] : [],
     ...options.ephemeral ? ["--ephemeral"] : [],
     ...options.extra ?? [],
-    "--",
+    ...options.storage !== undefined
+      ? [
+        "storage",
+        ...options.storage.extra ?? [],
+        options.storage.program,
+        ...options.storage.args ?? [],
+        "++",
+      ]
+      : [],
+    "run",
+    ...options.runExtra ?? [],
     options.program,
     ...options.args ?? [],
   ];
