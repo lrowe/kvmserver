@@ -41,26 +41,23 @@ fn process<Stream: Read + Write>(stream: &mut Stream) -> Result<(), Error> {
     if !req.starts_with(b"GET ") {
         return Err(Error::from(ErrorKind::InvalidData));
     }
-
-    let buf = &mut [0u8; 256];
-    unsafe {
-        remote_resume(buf.as_mut_ptr() as *mut std::ffi::c_void, buf.len());
+    let mut buf = [0u8; 256];
+    let len = unsafe { remote_resume(buf.as_mut_ptr(), buf.len() as isize) };
+    if len < 0 || len as usize > buf.len() {
+        return Err(Error::from(ErrorKind::InvalidData));
     }
-    if let Ok(s) = std::ffi::CStr::from_bytes_until_nul(buf) {
-        stream.write_all(
-            &[
-                b"HTTP/1.1 200 OK\r\n\
-                Connection: close\r\n\
-                Content-Type: text/plain; charset=utf-8\r\n\
-                \r\n\
-                Hello from Rust inside TinyKVM\n",
-                s.to_bytes(),
-                b"\n",
-            ]
-            .concat(),
-        )?;
-        Ok(())
-    } else {
-        Err(Error::from(ErrorKind::InvalidData))
-    }
+    let message = &buf[0..len as usize];
+    stream.write_all(
+        &[
+            b"HTTP/1.1 200 OK\r\n\
+            Connection: close\r\n\
+            Content-Type: text/plain; charset=utf-8\r\n\
+            \r\n\
+            Hello from Rust inside TinyKVM\n",
+            message,
+            b"\n",
+        ]
+        .concat(),
+    )?;
+    Ok(())
 }
