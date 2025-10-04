@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(kvmserverguest C)
 
 add_library(kvmserverguest SHARED
-  libkvmserver.c
+  libkvmserverguest.c
 )
 
 set_target_properties(kvmserverguest PROPERTIES
