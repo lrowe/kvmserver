@@ -1,19 +1,17 @@
-#include <stddef.h>
+#include <sys/types.h>
 
 /* Resume storage VM with provided data shared two-ways. */
-extern void sys_remote_resume(void* data, size_t len);
+extern size_t sys_remote_resume(void* buffer, ssize_t len);
 /* Wait for remote resume (in storage) */
-extern size_t sys_storage_wait_paused(void** req);
+extern size_t sys_storage_wait_paused(void** req, ssize_t len);
 
-void remote_resume(void *buffer, size_t len) {
-	sys_remote_resume(buffer, len);
+size_t remote_resume(void *buffer, ssize_t len) {
+	return sys_remote_resume(buffer, len);
 }
 
-void* storage_wait_paused()
+size_t storage_wait_paused(void** req, ssize_t len)
 {
-	void *ptr = NULL;
-	const size_t bytes = sys_storage_wait_paused(&ptr);
-	return ptr;
+	return sys_storage_wait_paused(req, len);
 }
 
 asm(".global sys_remote_resume\n"
