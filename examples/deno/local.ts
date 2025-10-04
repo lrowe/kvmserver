@@ -1,14 +1,7 @@
 console.log("Hello from Deno inside TinyKVM");
-const kvmserverguest = Deno.dlopen("libkvmserverguest.so",
-  {
-    remote_resume: { parameters: ["buffer", "usize"], result: "void" },
-  },
-);
-function getZeroTerminatedString(buffer: Uint8Array, encoding = "utf8") {
-  const nullByteIndex = buffer.indexOf(0x00);
-  const slice = nullByteIndex !== -1 ? buffer.slice(0, nullByteIndex) : buffer;
-  return new TextDecoder(encoding).decode(slice);
-}
+const kvmserverguest = Deno.dlopen("libkvmserverguest.so", {
+  remote_resume: { parameters: ["buffer", "usize"], result: "void" },
+});
 function getRemoteString(): string {
   const remote_buffer = new Uint8Array(256);
 
@@ -16,9 +9,8 @@ function getRemoteString(): string {
     remote_buffer,
     BigInt(remote_buffer.byteLength),
   );
-
-  // Get remote_buffer as a zero-terminated string
-  return getZeroTerminatedString(remote_buffer);
+  return new Deno.UnsafePointerView(Deno.UnsafePointer.of(remote_buffer)!)
+    .getCString();
 }
 
 // Simple HTTP server
