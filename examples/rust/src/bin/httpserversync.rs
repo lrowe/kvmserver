@@ -39,6 +39,7 @@ fn main() -> Result<(), Error> {
 //     let _bytes_read = stream.read(&mut req)?;
 //     if !req.starts_with(b"GET ") {
 //         return Err(Error::from(ErrorKind::InvalidData));
+//     }
 //     stream.write_all(
 //         b"HTTP/1.1 200 OK\r\n\
 //         Connection: close\r\n\
