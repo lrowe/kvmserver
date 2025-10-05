@@ -47,7 +47,7 @@ RUN useradd --system --home /examples --user-group runner
 RUN set -e; \
     mkdir -p /src/api; \
     cd src/api; \
-    curl -fsSLO https://raw.githubusercontent.com/libriscv/kvmserver/83f9ddc07b2dc777f00acd0b0643c159d7de9ce9/src/api/libkvmserverguest.c
+    curl -fsSLO https://raw.githubusercontent.com/libriscv/kvmserver/372001d6832f267185f183c171b0f5f7184b48b5/src/api/libkvmserverguest.c
 USER runner
 WORKDIR /examples
 COPY --chown=runner:runner . .
