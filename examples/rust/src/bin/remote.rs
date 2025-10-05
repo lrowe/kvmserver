@@ -1,6 +1,6 @@
 use std::arch::asm;
 
-fn storage_wait_paused(return_value: &isize) -> &mut [u8] {
+fn storage_wait_paused<'a>(return_value: isize) -> Result<Option<&'a mut [u8]>, isize> {
     let mut bufptr: *mut u8 = std::ptr::null_mut();
     let len: isize;
     unsafe {
@@ -13,11 +13,15 @@ fn storage_wait_paused(return_value: &isize) -> &mut [u8] {
             in("rsi") return_value,
             options(nostack)
         );
-        if bufptr.is_null() || len < 0 {
-            panic!("storage_wait_paused failed");
-        }
-        std::slice::from_raw_parts_mut(bufptr, len.try_into().unwrap())
     }
+    if len < 0 {
+        return Err(len);
+    }
+    if bufptr.is_null() {
+        return Ok(None);
+    }
+    let buf = unsafe { std::slice::from_raw_parts_mut(bufptr, len.try_into().unwrap()) };
+    Ok(Some(buf))
 }
 
 pub fn kopimi(buffer: &mut [u8], slice: &[u8]) {
@@ -28,13 +32,22 @@ pub fn kopimi(buffer: &mut [u8], slice: &[u8]) {
 fn main() {
     let mut ret: isize = 0;
     loop {
-        let buf: &mut [u8] = storage_wait_paused(&ret);
-        let message = b"Hello from Rust storage inside TinyKVM";
-        if message.len() > buf.len() {
-            ret = -1;
-            continue;
+        match storage_wait_paused(ret) {
+            Ok(Some(buf)) => {
+                let message = b"Hello from Rust storage inside TinyKVM";
+                if message.len() > buf.len() {
+                    ret = -1;
+                    continue;
+                }
+                kopimi(buf, message);
+                ret = message.len().try_into().unwrap();
+            }
+            Ok(None) => {
+                ret = 0;
+            }
+            Err(num) => {
+                ret = num;
+            }
         }
-        kopimi(buf, message);
-        ret = message.len().try_into().unwrap();
     }
 }
