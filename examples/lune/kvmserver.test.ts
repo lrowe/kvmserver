@@ -4,6 +4,7 @@ const common = {
   program: "lune",
   cwd: import.meta.dirname,
   allowAll: true,
+  extra: ["--no-mmap-backed-files"],
 };
 const ephemeral = true;
 const warmup = 1;
