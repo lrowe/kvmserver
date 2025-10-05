@@ -16,8 +16,10 @@ while (true) {
     kvmserverguest.symbols.storage_wait_paused(bufptrptrbuf, BigInt(result)),
   );
   const bufptr = bufptrptrview.getPointer(0);
-  if (bufptr === null || buflen < 0) {
-    result = -1;
+  console.log({ buflen, bufptrptrbuf });
+  if (bufptr === null) {
+    console.log("storage: on reset");
+    result = 0;
     continue;
   }
   // View it as a Uint8Array of length 256

@@ -383,6 +383,28 @@ VirtualMachine::VirtualMachine(const VirtualMachine& other, unsigned reqid, bool
 				}
 				machine().stop();
 				this->m_reset_needed = true;
+	// This belongs in reset_to below m_machine.reset_to but putting it here means it does not reset loop.
+	if (this->config().storage) {
+		const uint64_t src = 0;
+		const uint64_t len = 0;
+
+		if (this->config().storage_ipre_permanent)  {
+			tinykvm::Machine& m = this->machine().remote();
+			auto& regs = m.registers();
+			m.copy_to_guest(regs.rdi, &src, sizeof(src));
+			regs.rax = len;
+			m.set_registers(regs);
+
+			m.ipre_permanent_remote_resume_now();
+		} else {
+			this->machine().ipre_remote_resume_now(false,
+			[src, len] (tinykvm::Machine& m) {
+				m.remote().copy_to_guest(m.registers().rdi, &src, sizeof(src));
+				m.registers().rax = len;
+				m.set_registers(m.registers());
+			});
+		}
+	}
 				return true; // The VM will be reset
 			}
 			return false; // Nothing happened
