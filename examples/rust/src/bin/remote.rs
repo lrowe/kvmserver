@@ -11,6 +11,7 @@ fn storage_wait_paused<'a>(return_value: isize) -> Result<Option<&'a mut [u8]>, 
             inout("rax") 0x10002usize => len,
             in("rdi") &mut bufptr as *mut *mut u8,
             in("rsi") return_value,
+            clobber_abi("C"),
             options(nostack)
         );
     }

@@ -6,7 +6,23 @@ use std::net::Shutdown;
 use std::net::TcpListener;
 use std::os::unix::net::UnixListener;
 
-use kvmserver_examples_rust::remote_resume;
+//use kvmserver_examples_rust::remote_resume;
+use std::arch::asm;
+fn remote_resume(bufptr: *mut u8, buflen: isize) -> isize {
+    let len: isize;
+    unsafe {
+        // Syscall takes a pointer and length as argument
+        // and returns length in RAX.
+        asm!("out 0x0, eax",
+            inout("rax") 0x10001usize => len,
+            in("rdi") bufptr,
+            in("rsi") buflen,
+            clobber_abi("C"),
+            options(nostack)
+        );
+    }
+    len
+}
 
 fn main() -> Result<(), Error> {
     let addr = std::env::args()

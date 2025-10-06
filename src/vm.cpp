@@ -180,6 +180,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 			auto& vm = *cpu.machine().get_userdata<VirtualMachine>();
 			switch (syscall_number) {
 			case 67339: // sys_remote_resume
+			case 0x10001:
 				if (!vm.is_storage()) {
 					// Remember buffer address and length values
 					const uint64_t src = cpu.registers().rdi;
@@ -204,7 +205,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 					return;
 				}
 				throw std::runtime_error("sys_remote_resume should *NOT* be called from storage VM");
-			case 65538: // sys_wait_for_storage_task_paused
+			case 0x10002: // sys_wait_for_storage_task_paused
 				if (vm.is_storage()) {
 					vm.set_waiting_for_requests(true);
 					cpu.stop();
