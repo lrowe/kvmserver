@@ -17,7 +17,7 @@ size_t storage_wait_paused(void** req, ssize_t len)
 asm(".global sys_remote_resume\n"
 	".type sys_remote_resume, @function\n"
 	"sys_remote_resume:\n"
-	"	mov $0x1070B, %eax\n"
+	"	mov $0x10001, %eax\n"
 	"	out %eax, $0\n"
 	"   ret\n");
 
