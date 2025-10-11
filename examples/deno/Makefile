@@ -1,24 +1,31 @@
 .PHONY: build check clean fmt lint test
-build: target/helloworld target/renderer target/imagemagick target/ca.crt
+build: target/helloworld target/renderer target/imagemagick target/ca.crt target/httpserversync
 target/helloworld:
 	mkdir -p target
 	deno compile \
 		--allow-all \
-		--v8-flags=-predictable,--max-old-space-size=64,--max-semi-space-size=64 \
+		--v8-flags=--predictable,--max-old-space-size=64,--max-semi-space-size=64 \
 		-o target/helloworld \
 		'data:,const arg = Deno.args[0] || "8000"; Deno.serve(arg.includes("/") ? { path: arg } : { port: Number(arg) }, () => new Response("Hello, World!"))'
-target/renderer:
+target/httpserversync: httpserversync.ts
+	mkdir -p target
+	deno compile \
+		--allow-all \
+		--v8-flags=--predictable,--max-old-space-size=64,--max-semi-space-size=64 \
+		-o target/httpserversync \
+		httpserversync.ts
+target/renderer: ../ext/react-server-render-benchmark/renderer.mjs
 	mkdir -p target
 	deno compile \
 		--no-check \
 		--allow-all \
-		--v8-flags=-predictable,--max-old-space-size=256,--max-semi-space-size=256 \
+		--v8-flags=--predictable,--max-old-space-size=256,--max-semi-space-size=256 \
 		-o target/renderer \
 		../ext/react-server-render-benchmark/renderer.mjs
 target/deno_city.jpeg:
 	mkdir -p target
 	curl -L -o target/deno_city.jpeg https://artwork.deno.dev/images/artwork/deno_city.jpeg
-target/imagemagick: target/deno_city.jpeg
+target/imagemagick: imagemagick.ts target/deno_city.jpeg
 	mkdir -p target
 	deno compile \
 		--allow-all \

@@ -62,6 +62,26 @@ const env = {
 {
   const common = {
     cwd,
+    program: "./target/httpserversync",
+    allowAll,
+  };
+  Deno.test(
+    "Deno compile httpserversync",
+    testHelloWorld({ ...common }),
+  );
+  Deno.test(
+    "Deno compile httpserversync ephemeral",
+    testHelloWorld({ ...common, ephemeral }),
+  );
+  Deno.test(
+    "Deno compile httpserversync ephemeral warmup",
+    testHelloWorld({ ...common, ephemeral, warmup }),
+  );
+}
+
+{
+  const common = {
+    cwd,
     program: "./target/renderer",
     allowAll,
   };

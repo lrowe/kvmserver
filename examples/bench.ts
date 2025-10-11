@@ -118,6 +118,7 @@ async function oha(
 ): Promise<OhaResults> {
   const args = [
     ...ohaArgs,
+    "--wait-ongoing-requests-after-deadline",
     "--no-tui",
     "--output-format=json",
     "http://127.0.0.1:8000/",
@@ -507,6 +508,10 @@ const groups = [
   kvmserverBenches(
     "Deno helloworld",
     "./deno/target/helloworld",
+  ),
+  kvmserverBenches(
+    "Deno httpserversync",
+    "./deno/target/httpserversync",
   ),
   kvmserverBenches(
     "Deno React page rendering",
