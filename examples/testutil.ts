@@ -94,7 +94,7 @@ export function testHelloWorld(
   options: KvmServerCommandOptions,
   onResponse: (response: Response) => Promise<void> = async (response) => {
     const text = await response.text();
-    assert(response.ok, "response.ok");
+    assertEquals(response.status, 200);
     assertEquals(text, "Hello, World!");
   },
 ) {
