@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { TextLineStream } from "@std/streams/text-line-stream";
 
 function quote(s: string) {
