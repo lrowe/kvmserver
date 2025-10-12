@@ -38,3 +38,23 @@ const warmup = 1;
     testHelloWorld({ ...common, program, ephemeral, warmup }),
   );
 }
+
+{
+  const program = "./target/release/local";
+  const storage = {
+    program: "./target/release/remote",
+    extra: ["--1-to-1"],
+  };
+  Deno.test(
+    "storage",
+    testHelloWorld({ ...common, storage, program }),
+  );
+  Deno.test(
+    "storage ephemeral",
+    testHelloWorld({ ...common, storage, program, ephemeral }),
+  );
+  Deno.test(
+    "storage ephemeral warmup",
+    testHelloWorld({ ...common, storage, program, ephemeral, warmup }),
+  );
+}

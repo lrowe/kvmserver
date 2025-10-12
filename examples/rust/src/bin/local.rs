@@ -6,23 +6,7 @@ use std::net::Shutdown;
 use std::net::TcpListener;
 use std::os::unix::net::UnixListener;
 
-//use kvmserver_examples_rust::remote_resume;
-use std::arch::asm;
-fn remote_resume(bufptr: *mut u8, buflen: isize) -> isize {
-    let len: isize;
-    unsafe {
-        // Syscall takes a pointer and length as argument
-        // and returns length in RAX.
-        asm!("out 0x0, eax",
-            inout("rax") 0x10001usize => len,
-            in("rdi") bufptr,
-            in("rsi") buflen,
-            clobber_abi("C"),
-            options(nostack)
-        );
-    }
-    len
-}
+use kvmserver_examples_rust::remote_resume;
 
 fn main() -> Result<(), Error> {
     let addr = std::env::args()
@@ -58,22 +42,20 @@ fn process<Stream: Read + Write>(stream: &mut Stream) -> Result<(), Error> {
         return Err(Error::from(ErrorKind::InvalidData));
     }
     let mut buf = [0u8; 256];
-    let len = unsafe { remote_resume(buf.as_mut_ptr(), buf.len() as isize) };
-    if len < 0 || len as usize > buf.len() {
-        return Err(Error::from(ErrorKind::InvalidData));
+    match remote_resume(&mut buf) {
+        Err(_num) => Err(Error::from(ErrorKind::InvalidData)),
+        Ok(message) => {
+            stream.write_all(
+                &[
+                    b"HTTP/1.1 200 OK\r\n\
+                    Connection: close\r\n\
+                    Content-Type: text/plain; charset=utf-8\r\n\
+                    \r\n",
+                    message,
+                ]
+                .concat(),
+            )?;
+            Ok(())
+        }
     }
-    let message = &buf[0..len as usize];
-    stream.write_all(
-        &[
-            b"HTTP/1.1 200 OK\r\n\
-            Connection: close\r\n\
-            Content-Type: text/plain; charset=utf-8\r\n\
-            \r\n\
-            Hello from Rust inside TinyKVM\n",
-            message,
-            b"\n",
-        ]
-        .concat(),
-    )?;
-    Ok(())
 }

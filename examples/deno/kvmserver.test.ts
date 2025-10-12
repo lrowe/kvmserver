@@ -285,3 +285,30 @@ const env = {
     },
   );
 }
+
+{
+  const common = {
+    cwd,
+    program: "deno",
+    args: ["run", "--allow-all", "local.ts"],
+    env,
+    allowAll,
+    storage: {
+      program: "deno",
+      args: ["run", "--allow-all", "remote.ts"],
+      extra: ["--1-to-1"],
+    },
+  };
+  Deno.test(
+    "storage",
+    testHelloWorld({ ...common }),
+  );
+  Deno.test(
+    "storage ephemeral",
+    testHelloWorld({ ...common, ephemeral }),
+  );
+  Deno.test(
+    "storage ephemeral warmup",
+    testHelloWorld({ ...common, ephemeral, warmup }),
+  );
+}
