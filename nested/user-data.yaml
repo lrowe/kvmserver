@@ -6,38 +6,38 @@ bootcmd:
   - [
       mkdir,
       "-p",
-      /media/local-lower,
-      /media/local-upper,
-      /media/local-work,
-      /media/mnt-lower,
-      /media/mnt-upper,
-      /media/mnt-work,
-      /media/nvm-lower,
-      /media/nvm-upper,
-      /media/nvm-work,
+      /media/local.lower,
+      /media/local.upper,
+      /media/local.work,
+      /media/mnt.lower,
+      /media/mnt.upper,
+      /media/mnt.work,
+      /media/nvm.lower,
+      /media/nvm.upper,
+      /media/nvm.work,
     ]
 mounts:
   - [bin, /usr/local/bin, 9p, "ro,trans=virtio,version=9p2000.L"]
-  - [local, /media/local-lower, 9p, "ro,trans=virtio,version=9p2000.L"]
+  - [local, /media/local.lower, 9p, "ro,trans=virtio,version=9p2000.L"]
   - [
       overlay,
       /media/local,
       overlay,
-      "defaults,x-systemd.requires-mounts-for=/media/local-lower,lowerdir=/media/local-lower,upperdir=/media/local-upper,workdir=/media/local-work",
+      "defaults,x-systemd.requires-mounts-for=/media/local.lower,lowerdir=/media/local.lower,upperdir=/media/local.upper,workdir=/media/local.work",
     ]
-  - [mnt, /media/mnt-lower, 9p, "ro,trans=virtio,version=9p2000.L"]
+  - [mnt, /media/mnt.lower, 9p, "ro,trans=virtio,version=9p2000.L"]
   - [
       overlay,
       /mnt,
       overlay,
-      "defaults,x-systemd.requires-mounts-for=/media/mnt-lower,lowerdir=/media/mnt-lower,upperdir=/media/mnt-upper,workdir=/media/mnt-work",
+      "defaults,x-systemd.requires-mounts-for=/media/mnt.lower,lowerdir=/media/mnt.lower,upperdir=/media/mnt.upper,workdir=/media/mnt.work",
     ]
-  - [nvm, /media/nvm-lower 9p, "ro,trans=virtio,version=9p2000.L"]
+  - [nvm, /media/nvm.lower 9p, "ro,trans=virtio,version=9p2000.L"]
   - [
       overlay,
       /media/nvm,
       overlay,
-      "defaults,x-systemd.requires-mounts-for=/media/nvm-lower,lowerdir=/media/nvm-lower,upperdir=/media/mnt-upper,workdir=/media/mnt-work",
+      "defaults,x-systemd.requires-mounts-for=/media/nvm.lower,lowerdir=/media/nvm.lower,upperdir=/media/mnt.upper,workdir=/media/mnt.work",
     ]
 apt:
   sources:
