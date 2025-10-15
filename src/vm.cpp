@@ -167,6 +167,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 		.split_hugepages = false,
 		.executable_heap = config.executable_heap,
 		.mmap_backed_files = config.mmap_backed_files,
+		.fast_cold_start_file = storage ? "" : config.coldstart_filename,
 		.hugepages_arena_size = config.hugepage_arena_size,
 	}),
 	m_config(config),
