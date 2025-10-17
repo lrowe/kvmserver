@@ -11,9 +11,6 @@ int main(int argc, char* argv[], char* envp[])
 		Configuration config = Configuration::FromArgs(argc, argv);
 		VirtualMachine::init_kvm();
 
-		// Read the binary file
-		MmapFile binary_file(config.main_filename);
-
 		std::unique_ptr<MmapFile> storage_binary_file;
 		std::unique_ptr<VirtualMachine> storage_vm;
 		std::vector<std::unique_ptr<VirtualMachine>> storage_forks;
@@ -34,6 +31,8 @@ int main(int argc, char* argv[], char* envp[])
 			storage_binary_file->dontneed(); // Lazily drop pages from the file
 		}
 
+		// Read the binary file
+		MmapFile binary_file(config.main_filename);
 		// Create a VirtualMachine instance
 		VirtualMachine vm(binary_file.view(), config);
 		if (storage_vm != nullptr) {
