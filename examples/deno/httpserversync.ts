@@ -137,11 +137,7 @@ export function serve(listenfd: number) {
         let value;
         // Array.from("GET ", c => c.charCodeAt(0)) // [ 71, 69, 84, 32 ]
         if (buf[0] !== 71 || buf[1] !== 69 || buf[2] !== 84 || buf[3] !== 32) {
-          console.error(
-            `--- Bad request ---\n${
-              new TextDecoder("latin1").decode(buf)
-            }\n-------------------`,
-          );
+          console.error("Bad request", buf);
           value = "HTTP/1.1 405 Method Not Allowed\r\n" +
             "Connection: close\r\n" +
             "Content-Type: text/plain; charset=utf-8\r\n" +
