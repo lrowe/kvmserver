@@ -20,6 +20,18 @@ struct VirtualMachine
 		Poll,
 		Epoll,
 	};
+	struct AppSnapshotState {
+		PollMethod poll_method;
+		int tracked_client_vfd;
+		int backlog;
+		int domain;
+		int type;
+		int protocol;
+		int flags;
+		int reuseaddr;
+		socklen_t addr_len;
+		struct sockaddr_storage addr;
+	};
 
 	void wait_for_requests_paused();
 	bool is_waiting_for_requests() const noexcept { return m_waiting_for_requests; }
@@ -51,7 +63,10 @@ struct VirtualMachine
 		std::chrono::milliseconds initialization_time;
 		std::chrono::milliseconds warmup_time;
 	};
+	void save_state();
+	void load_state();
 	InitResult initialize(std::function<void()> warmup, bool just_one_vm);
+	InitResult initialize_from_file();
 	void reset_to(const VirtualMachine&);
 	static void init_kvm();
 

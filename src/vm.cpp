@@ -414,6 +414,87 @@ void VirtualMachine::reset_to(const VirtualMachine& other)
 	this->m_blocking_connections = false;
 }
 
+void VirtualMachine::save_state()
+{
+	machine().save_snapshot_state_now();
+	auto map = machine().get_snapshot_state_user_area();
+	if (map == NULL) {
+		throw std::runtime_error("snapshot user area is null");
+	}
+	AppSnapshotState& state = *reinterpret_cast<AppSnapshotState*>(map);
+	state.poll_method = this->m_poll_method;
+	state.tracked_client_vfd = this->m_tracked_client_vfd;
+	state.backlog = 128; // XXX
+
+	const auto fd = this->m_tracked_client_fd;
+	int len = sizeof(state.domain);
+	if(getsockopt(fd, SOL_SOCKET, SO_DOMAIN, &(state.domain), (socklen_t*) &len) < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+	len = sizeof(state.type);
+	if(getsockopt(fd, SOL_SOCKET, SO_TYPE, &(state.type), (socklen_t*) &len) < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+	len = sizeof(state.protocol);
+	if(getsockopt(fd, SOL_SOCKET, SO_PROTOCOL, &(state.protocol), (socklen_t*) &len) < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+	len = sizeof(state.reuseaddr);
+	if (getsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(state.reuseaddr), (socklen_t*) &len) < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+	state.flags = fcntl(fd, F_GETFL, 0);
+	if (state.flags < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+	state.addr_len = sizeof(state.addr);
+	if (getsockname(fd, (struct sockaddr*)&(state.addr), &(state.addr_len)) < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+}
+
+void VirtualMachine::load_state()
+{
+	auto map = machine().get_snapshot_state_user_area();
+	if (map == NULL) {
+		throw std::runtime_error("snapshot user area is null");
+	}
+	AppSnapshotState& state = *reinterpret_cast<AppSnapshotState*>(map);
+	const auto fdm = machine().fds();
+	this->m_poll_method = state.poll_method;
+	int fd = socket(state.domain, state.type, state.protocol);
+	if (fd < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(state.reuseaddr), sizeof(state.reuseaddr)) < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+	if (fcntl(fd, F_SETFL, state.flags) < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+	if (bind(fd, (struct sockaddr*) &(state.addr), state.addr_len) < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+	if (listen(fd, state.backlog) < 0) {
+		throw std::runtime_error(strerror(errno));
+	}
+	this->m_tracked_client_vfd = state.tracked_client_vfd;
+	this->m_tracked_client_fd = fd;
+	this->machine().fds().manage_as(state.tracked_client_vfd, fd, true, true);
+}
+
+VirtualMachine::InitResult VirtualMachine::initialize_from_file()
+{
+	InitResult result;
+	auto start = std::chrono::high_resolution_clock::now();
+	this->set_waiting_for_requests(true);
+	this->machine().prepare_copy_on_write();
+	this->load_state();
+	auto end = std::chrono::high_resolution_clock::now();
+	result.initialization_time += std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	return result;
+}
+
 VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warmup_callback, bool just_one_vm)
 {
 	InitResult result;
@@ -467,6 +548,7 @@ VirtualMachine::InitResult VirtualMachine::initialize(std::function<void()> warm
 			}
 			this->m_tracked_client_vfd = vfd;
 			this->m_tracked_client_fd = fd;
+			printf("vfd: %d fd: %d\n", vfd, fd);
 			return true;
 		};
 		machine().fds().epoll_wait_callback =

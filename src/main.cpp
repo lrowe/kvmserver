@@ -46,13 +46,22 @@ int main(int argc, char* argv[], char* envp[])
 		// Initialize the VM by running through main()
 		// and then do a warmup, if required
 		const bool just_one_vm = (config.concurrency == 1 && !config.ephemeral);
-		auto init = vm.initialize(std::bind(&VirtualMachine::warmup, &vm), just_one_vm);
-		// Check if the VM is (likely) waiting for requests
-		if (!vm.is_waiting_for_requests()) {
-			if (just_one_vm)
-				return 0; // It exited normally
-			fprintf(stderr, "The program did not wait for requests\n");
-			return 1;
+		VirtualMachine::InitResult init;
+		const bool is_snapshot = !config.snapshot_filename.empty() && std::filesystem::exists(config.snapshot_filename);
+		if (is_snapshot) {
+			init = vm.initialize_from_file();
+		} else {
+			init = vm.initialize(std::bind(&VirtualMachine::warmup, &vm), just_one_vm);
+			// Check if the VM is (likely) waiting for requests
+			if (!vm.is_waiting_for_requests()) {
+				if (just_one_vm)
+					return 0; // It exited normally
+				fprintf(stderr, "The program did not wait for requests\n");
+				return 1;
+			}
+			if (!config.snapshot_filename.empty() ) {
+				vm.save_state();
+			}
 		}
 		binary_file.dontneed(); // Lazily drop pages from the file
 
