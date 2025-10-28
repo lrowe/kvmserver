@@ -166,7 +166,7 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 		.master_direct_memory_writes = true,
 		.split_hugepages = false,
 		.executable_heap = config.executable_heap,
-		.mmap_backed_files = config.mmap_backed_files && config.snapshot_filename.empty(),
+		.mmap_backed_files = config.mmap_backed_files && (storage || config.snapshot_filename.empty()),
 		.snapshot_file = storage ? "" : config.snapshot_filename,
 		.hugepages_arena_size = config.hugepage_arena_size,
 	}),
@@ -424,7 +424,7 @@ VirtualMachine::InitResult VirtualMachine::initialize_from_file()
 		this->load_state();
 	}
 	auto end = std::chrono::high_resolution_clock::now();
-	result.initialization_time += std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	result.initialization_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 	result.warmup_time = std::chrono::milliseconds(0);
 	return result;
 }
