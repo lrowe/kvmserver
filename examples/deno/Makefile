@@ -32,7 +32,7 @@ target/imagemagick: imagemagick.ts target/deno_city.jpeg
 		--v8-flags=--predictable \
 		-o target/imagemagick \
 		imagemagick.ts
-target/ca.crt target/ca.key target/server.crt target/server/key &:
+target/ca.crt target/ca.key target/server.crt target/server.key &:
 	mkdir -p target
 	cd target && ../mkcert.sh
 check:
