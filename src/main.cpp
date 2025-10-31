@@ -12,7 +12,10 @@ int main(int argc, char* argv[], char* envp[])
 		VirtualMachine::init_kvm();
 
 		// Read the binary file
-		MmapFile binary_file(config.main_filename);
+		std::optional<MmapFile> binary_file;
+		if (config.snapshot_mode != tinykvm::MachineOptions::SnapshotMode::Open) {
+			binary_file.emplace(config.main_filename);
+		}
 
 		std::unique_ptr<MmapFile> storage_binary_file;
 		std::unique_ptr<VirtualMachine> storage_vm;
@@ -35,7 +38,7 @@ int main(int argc, char* argv[], char* envp[])
 		}
 
 		// Create a VirtualMachine instance
-		VirtualMachine vm(binary_file.view(), config);
+		VirtualMachine vm(binary_file.has_value() ? std::optional(binary_file.value().view()) : std::nullopt, config);
 		if (storage_vm != nullptr) {
 			// Link the main storage VM to the main VM
 			if (config.storage_ipre_permanent) {
@@ -55,7 +58,8 @@ int main(int argc, char* argv[], char* envp[])
 			fprintf(stderr, "The program did not wait for requests\n");
 			return 1;
 		}
-		binary_file.dontneed(); // Lazily drop pages from the file
+		if (binary_file.has_value())
+			binary_file.value().dontneed(); // Lazily drop pages from the file
 
 		if (config.storage_1_to_1 && !just_one_vm) {
 			// Prepare storage VM for forking
@@ -102,6 +106,10 @@ int main(int argc, char* argv[], char* envp[])
 			init.initialization_time.count(),
 			warmup_time.c_str(),
 			process_rss.c_str());
+
+		if (config.snapshot_mode == tinykvm::MachineOptions::SnapshotMode::Create) {
+			return 0;
+		}
 
 		// Non-ephemeral single-threaded - we already have a VM
 		if (just_one_vm)

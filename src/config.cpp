@@ -314,8 +314,7 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 
 	app.add_option("-t,--threads", config.concurrency, "Number of request VMs (0 to use cpu count)")->capture_default_str();
 	app.add_flag("-e,--ephemeral", config.ephemeral, "Use ephemeral VMs");
-	app.add_option("-w,--warmup", config.warmup_connect_requests, "Number of warmup requests")->capture_default_str();
-	app.add_option("--snapshot-file", config.snapshot_filename, "Snapshot filename");
+	auto& warmup = *app.add_option("-w,--warmup", config.warmup_connect_requests, "Number of warmup requests")->capture_default_str();
 
 	app.add_flag("-v,--verbose", config.verbose, "Enable verbose output")->group("Verbose");
 	app.add_flag("--verbose-syscalls", config.verbose_syscalls, "Enable verbose syscall output")->group("Verbose");
@@ -359,21 +358,25 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 	// This allows ++ to be used as an escape from subcommand positionals.
 	app.add_subcommand("++", "")->silent()->group("")->fallthrough();
 
+	auto run_common = [&](CLI::App& sub) {
+		sub.add_option("--dylink-address-hint", config.dylink_address_hint)->capture_default_str()->group("Advanced");
+		sub.add_option("--remapping", "virt:size(mb)[:phys=0][:r?w?x?=rw]")
+			->group("Advanced")
+			->delimiter(',')
+			->expected(CLI::detail::expected_max_vector_size)
+			->each([&](const std::string& remap) {
+				add_remapping(remap, config.vmem_remappings);
+			});
+	};
+
 	// Main VM
-	auto &run = *app.add_subcommand("run", "Main VM");
+	auto &run = *app.add_subcommand("run", "Run");
 	run.configurable();
 	run.positionals_at_end();
 	run.validate_positionals();
 	run.add_option("program", config.main_filename, "Program")->required();
 	run.add_option("args", config.main_arguments, "Program arguments")->check(!CLI::IsMember({"++"}));
-	run.add_option("--dylink-address-hint", config.dylink_address_hint)->capture_default_str()->group("Advanced");
-	run.add_option("--remapping", "virt:size(mb)[:phys=0][:r?w?x?=rw]")
-		->group("Advanced")
-		->delimiter(',')
-		->expected(CLI::detail::expected_max_vector_size)
-		->each([&](const std::string& remap) {
-			add_remapping(remap, config.vmem_remappings);
-		});
+	run_common(run);
 	run.callback([&]() {
 		if (run.count() > 1) {
 			throw CLI::ValidationError("run subcommand may only be called once");
@@ -405,6 +408,43 @@ Configuration Configuration::FromArgs(int argc, char* argv[])
 		}
 		config.storage = true;
 		config.storage_filename = lookup_program(config.storage_filename);
+	});
+
+	// Create snapshot
+	auto &snapshot = *app.add_subcommand("snapshot", "Create snapshot");
+	snapshot.excludes(&run);
+	snapshot.excludes(&storage);
+	snapshot.configurable();
+	snapshot.positionals_at_end();
+	snapshot.validate_positionals();
+	snapshot.add_option("-o,--output", config.snapshot_filename, "Snapshot filename")->required();
+	snapshot.add_option("program", config.main_filename, "Program")->required();
+	snapshot.add_option("args", config.main_arguments, "Program arguments")->check(!CLI::IsMember({"++"}));
+	run_common(snapshot);
+	snapshot.callback([&]() {
+		if (snapshot.count() > 1) {
+			throw CLI::ValidationError("run subcommand may only be called once");
+		}
+		config.main_filename = lookup_program(config.main_filename);
+		config.snapshot_mode = tinykvm::MachineOptions::SnapshotMode::Create;
+	});
+
+	// Run snapshot
+	auto &snaprun = *app.add_subcommand("snaprun", "Run snapshot");
+	snaprun.excludes(&run);
+	snaprun.excludes(&snapshot);
+	snaprun.excludes(&storage);
+	snaprun.excludes(&warmup);
+	snaprun.configurable();
+	snaprun.positionals_at_end();
+	snaprun.validate_positionals();
+	snaprun.add_option("snapshot", config.snapshot_filename, "Snapshot")->required()->check(CLI::ExistingFile);
+	run_common(snaprun); // XXX: should be stored in snapshot
+	snaprun.callback([&]() {
+		if (snaprun.count() > 1) {
+			throw CLI::ValidationError("snaprun subcommand may only be called once");
+		}
+		config.snapshot_mode = tinykvm::MachineOptions::SnapshotMode::Open;
 	});
 
 	CLI::Option* print_config = app.add_flag("--print-config", "Print config and exit without running program")->configurable(false);

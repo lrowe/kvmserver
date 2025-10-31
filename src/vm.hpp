@@ -44,7 +44,7 @@ struct VirtualMachine
 	void warmup();
 	void open_debugger();
 
-	VirtualMachine(std::string_view binary, const Configuration& config, bool storage = false);
+	VirtualMachine(std::optional<std::string_view> binary, const Configuration& config, bool storage = false);
 	VirtualMachine(const VirtualMachine& other, unsigned reqid, bool storage);
 	~VirtualMachine();
 	struct InitResult {

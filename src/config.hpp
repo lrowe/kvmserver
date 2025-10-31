@@ -11,6 +11,7 @@ struct Configuration
 	std::string main_filename;
 	std::string storage_filename;
 	std::string snapshot_filename;
+	tinykvm::MachineOptions::SnapshotMode snapshot_mode = tinykvm::MachineOptions::SnapshotMode::Disabled;
 	uint16_t concurrency = 1; /* Request VMs */
 	uint16_t warmup_connect_requests = 0; /* Warmup requests, individual connections */
 	uint16_t warmup_intra_connect_requests = 1; /* Send N requests while connected */

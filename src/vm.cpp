@@ -153,13 +153,13 @@ static bool validate_network_access(
 	return false;
 }
 
-VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& config, bool storage)
-	: m_machine(select_main_binary(binary), tinykvm::MachineOptions{
+VirtualMachine::VirtualMachine(std::optional<std::string_view> binary, const Configuration& config, bool storage)
+	: m_machine(binary.has_value() ? select_main_binary(binary.value()) : std::string_view(), tinykvm::MachineOptions{
 		.max_mem = config.max_address_space,
 		.max_cow_mem = 0UL,
 		.dylink_address_hint = dylink_address(config, storage),
 		.heap_address_hint = storage ? 0 : config.heap_address_hint,
-		.vmem_base_address = detect_gigapage_from(binary, dylink_address(config, storage)),
+		.vmem_base_address = !binary.has_value() ? 0 : detect_gigapage_from(binary.value(), dylink_address(config, storage)),
 		.remappings {storage ? config.storage_remappings : config.vmem_remappings},
 		.verbose_loader = config.verbose,
 		.hugepages = config.hugepage_arena_size != 0,
@@ -168,10 +168,11 @@ VirtualMachine::VirtualMachine(std::string_view binary, const Configuration& con
 		.executable_heap = config.executable_heap,
 		.mmap_backed_files = config.mmap_backed_files && (storage || config.snapshot_filename.empty()),
 		.snapshot_file = storage ? "" : config.snapshot_filename,
+		.snapshot_mode = config.snapshot_mode,
 		.hugepages_arena_size = config.hugepage_arena_size,
 	}),
 	m_config(config),
-	m_original_binary(binary),
+	m_original_binary(binary.has_value() ? binary.value() : std::string_view()),
 	m_ephemeral(config.ephemeral),
 	m_is_storage(storage)
 {

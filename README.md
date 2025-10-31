@@ -132,65 +132,128 @@ preventing any changes to be written back to disk.
 ## Command line arguments
 
 ```
-kvmserver [OPTIONS] program [args...]
+kvmserver [OPTIONS] [SUBCOMMANDS]
 
-
-POSITIONALS:
-  program TEXT REQUIRED       Program
-  args TEXT ...               Program arguments
 
 OPTIONS:
-  -h,     --help              Print this help message and exit
-  -c,     --config [kvmserver.toml]
-                              Read a toml file
-          --cwd TEXT [/home/lrowe/devel/kvmserver/.build]
-                              Set the guests working directory
-          --env TEXT ...      add an environment variable
-  -t,     --threads UINT [1]  Number of request VMs (0 to use cpu count)
-  -e,     --ephemeral         Use ephemeral VMs
-  -w,     --warmup UINT [0]   Number of warmup requests
-  -v,     --verbose           Enable verbose output
-          --print-config      Print config and exit without running program
+  -h,     --help              Print this help message and exit 
+  -c,     --config [kvmserver.toml]  
+                              Read a toml file 
+          --help-all          Expand all help 
+          --cwd TEXT [/home/lrowe/devel/kvmserver]  
+                              Set the guests working directory 
+          --env TEXT ...      add an environment variable 
+  -t,     --threads UINT [1]  Number of request VMs (0 to use cpu count) 
+  -e,     --ephemeral         Use ephemeral VMs 
+  -w,     --warmup UINT [0]   Number of warmup requests 
+          --print-config      Print config and exit without running program 
+
+Verbose:
+  -v,     --verbose           Enable verbose output 
+          --verbose-syscalls  Enable verbose syscall output 
+          --verbose-mmap-syscalls 
+                              Enable verbose mmap syscall output 
+          --verbose-thread-syscalls 
+                              Enable verbose thread syscall output 
+          --verbose-pagetables 
+                              Enable verbose pagetable output 
 
 Permissions:
-          --allow-all Excludes: --allow-read --allow-write --allow-env --allow-net --allow-connect --allow-listen --volume
-                              Allow all access
-          --allow-read{/} Excludes: --allow-all
-                              Allow filesystem read access
-          --allow-write{/} Excludes: --allow-all
-                              Allow filesystem write access
-          --allow-env{*} Excludes: --allow-all
-                              Allow access to environment variables. Optionally specify
-                              accessible environment variables (e.g.
-                              --allow-env=USER,PATH,API_*).
-          --allow-net Excludes: --allow-all
-                              Allow network access
-          --allow-connect Excludes: --allow-all
-                              Allow outgoing network access
-          --allow-listen Excludes: --allow-all
-                              Allow incoming network access
-          --volume Excludes: --allow-all
-                              <host-path>:<guest-path>[:r?w?=r]
+          --allow-all Excludes: --allow-read --allow-write --allow-env --allow-net --allow-connect --allow-listen --volume 
+                              Allow all access 
+          --allow-read{/} Excludes: --allow-all 
+                              Allow filesystem read access 
+          --allow-write{/} Excludes: --allow-all 
+                              Allow filesystem write access 
+          --allow-env{*} Excludes: --allow-all 
+                              Allow access to environment variables. Optionally specify 
+                              accessible environment variables (e.g. 
+                              --allow-env=USER,PATH,API_*). 
+          --allow-net Excludes: --allow-all 
+                              Allow network access 
+          --allow-connect Excludes: --allow-all 
+                              Allow outgoing network access 
+          --allow-listen Excludes: --allow-all 
+                              Allow incoming network access 
+          --volume Excludes: --allow-all 
+                              <host-path>:<guest-path>[:r?w?=r] 
 
 Advanced:
-          --max-boot-time FLOAT [20]
-          --max-request-time FLOAT [8]
-          --max-main-memory UINT [8192]
-          --max-address-space UINT [131072]
-          --max-request-memory UINT [128]
-          --limit-request-memory UINT [128]
-          --shared-memory UINT [0]
-          --dylink-address-hint UINT [2]
-          --heap-address-hint UINT [256]
-          --hugepage-arena-size UINT [0]
-          --hugepage-requests-arena UINT [0]
-          --no-executable-heap{false}
-          --hugepages
-          --no-split-hugepages{false}
-          --transparent-hugepages
-          --no-relocate-fixed-mmap{false}
-          --no-ephemeral-keep-working-memory{false}
-          --remapping ...     virt:size(mb)[:phys=0][:r?w?x?=rw]
+          --max-boot-time FLOAT [20]  
+          --max-request-time FLOAT [8]  
+          --max-main-memory UINT [8192]  
+          --max-address-space UINT [122880]  
+          --max-request-memory UINT [128]  
+          --limit-request-memory UINT [128]  
+          --shared-memory UINT [0]  
+          --heap-address-hint UINT [256]  
+          --hugepage-arena-size UINT [0]  
+          --hugepage-requests-arena UINT [0]  
+          --no-executable-heap{false} 
+          --no-mmap-backed-files{false} 
+          --hugepages         
+          --no-split-hugepages{false} 
+          --transparent-hugepages 
+          --no-ephemeral-keep-working-memory{false} 
+
+SUBCOMMANDS:
+run
+  Run 
+  
+  
+POSITIONALS:
+  program TEXT REQUIRED       Program 
+  args TEXT:NOT {++} ...      Program arguments 
+
+Advanced:
+          --dylink-address-hint UINT [2]  
+          --remapping ...     virt:size(mb)[:phys=0][:r?w?x?=rw] 
+
+
+storage
+  Storage VM 
+  
+  
+POSITIONALS:
+  program TEXT REQUIRED       Storage program 
+  args TEXT:NOT {++} ...      Storage arguments 
+
+OPTIONS:
+          --1-to-1            Each request VM gets its own storage VM 
+
+Advanced:
+          --ipre-permanent    Storage VM uses permanent IPRE resume images 
+          --dylink-address-hint UINT [137441050624]  
+          --remapping ...     virt:size(mb)[:phys=0][:r?w?x?=rw] 
+
+
+snapshot
+  Create snapshot 
+  
+  
+POSITIONALS:
+  program TEXT REQUIRED       Program 
+  args TEXT:NOT {++} ...      Program arguments 
+
+OPTIONS:
+  -o,     --output TEXT REQUIRED 
+                              Snapshot filename 
+
+Advanced:
+          --dylink-address-hint UINT [2]  
+          --remapping ...     virt:size(mb)[:phys=0][:r?w?x?=rw] 
+
+
+snaprun
+  Run snapshot 
+  
+  
+POSITIONALS:
+  snapshot TEXT:FILE REQUIRED Snapshot 
+
+Advanced:
+          --dylink-address-hint UINT [2]  
+          --remapping ...     virt:size(mb)[:phys=0][:r?w?x?=rw] 
 ```
 
 ## Configuration file
