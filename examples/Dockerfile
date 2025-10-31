@@ -7,15 +7,6 @@
 # docker build -t ghcr.io/libriscv/kvmserver:test examples
 # KVM_GID=$(getent group kvm | cut -d: -f3) docker run --rm --mount type=image,src=ghcr.io/libriscv/kvmserver:bin,dst=/mnt --device /dev/kvm --group-add $KVM_GID -it ghcr.io/libriscv/kvmserver:test
 
-FROM rust:1.89-trixie AS build_wasmtime
-WORKDIR /wasmtime
-RUN set -e; \
-    git clone --depth 2 --branch v31.0.0-instance-reuse-e985d36 https://github.com/lrowe/wasmtime.git .; \
-    git submodule update --init --recursive
-RUN cargo build --release && mv target/release/wasmtime /bin/wasmtime-reuse
-RUN git checkout HEAD^
-RUN cargo build --release && mv target/release/wasmtime /bin/wasmtime-noreuse
-
 FROM node:24.6.0-trixie-slim
 LABEL org.opencontainers.image.description="kvmserver examples test runner"
 RUN set -e; \
@@ -38,7 +29,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /usr/local/bin/
 RUN uv python install 3.13.7
 RUN curl -fsSL https://github.com/bytecodealliance/wasmtime/releases/download/v36.0.2/wasmtime-v36.0.2-x86_64-linux.tar.xz \
     | tar -xJC /usr/local/bin/ --strip-components=1 --wildcards "*/wasmtime"
-COPY --from=build_wasmtime /bin/wasmtime-reuse /bin/wasmtime-noreuse /usr/local/bin/
+COPY --from=ghcr.io/lrowe/wasmtime:bin-git.bce7f2054f2b2d84d8adfa2c6ce813863721f2ea /wasmtime /usr/local/bin/wasmtime-noreuse
+COPY --from=ghcr.io/lrowe/wasmtime:bin-git.e985d36161da43cfb9a8d7c581c6a7a91378a57e /wasmtime /usr/local/bin/wasmtime-reuse
 ADD --chmod=755 https://github.com/hatoo/oha/releases/download/v1.9.0/oha-linux-amd64-pgo /usr/local/bin/oha
 COPY --from=denoland/deno:bin-2.5.0 /deno /usr/local/bin/
 COPY --from=oven/bun:1.2.21-debian /usr/local/bin/bun /usr/local/bin/
